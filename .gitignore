@@ -1,0 +1,23 @@
+# Dependências e build
+node_modules
+dist
+
+# Segredos (nunca vão para o GitHub)
+.env
+.env.*
+!.env.example
+SENHA-DO-BANCO.txt
+*.pfx
+*.p12
+
+# Supabase CLI (arquivos locais)
+supabase/.temp
+supabase/.branches
+
+# Sistema
+.DS_Store
+Thumbs.db
+vite.config.js.timestamp-*
+
+# Briefing do projeto: fica só no computador
+docs/ESPECIFICACAO.md

@@ -1,0 +1,157 @@
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useDemo } from '../demo/DemoContext'
+import { formatarMoeda, lerMoeda } from '../lib/moeda'
+import { normalizar } from '../demo/regras'
+import Modal from '../components/Modal'
+import Icone from '../components/Icone'
+import { Aviso, CampoBusca, Selo, Vazio } from '../components/ui'
+
+const TIPOS = { todos: 'Todos', lingerie: 'Lingerie', cosmetico: 'Cosméticos' }
+const separar = (t) => t.split(',').map((x) => x.trim()).filter(Boolean)
+
+export default function Produtos() {
+  const { dados, linhas, ehProprietaria } = useDemo()
+  const [busca, setBusca] = useState('')
+  const [tipo, setTipo] = useState('todos')
+  const [novo, setNovo] = useState(false)
+
+  const lista = useMemo(() => dados.produtos
+    .filter((p) => p.ativo && (tipo === 'todos' || p.tipo === tipo))
+    .map((p) => {
+      const vs = linhas.filter((l) => l.produto_id === p.id)
+      const precos = vs.map((v) => v.preco)
+      return {
+        ...p, variacoes: vs,
+        estoque: vs.reduce((s, v) => s + Math.max(v.saldo, 0), 0),
+        acabando: vs.filter((v) => v.saldo <= v.estoque_minimo).length,
+        min: Math.min(...precos), max: Math.max(...precos),
+      }
+    })
+    .filter((p) => !busca.trim() || normalizar(`${p.nome} ${p.categoria} ${p.marca} ${p.variacoes.map((v) => `${v.nomeVariacao} ${v.sku} ${v.codigo_barras}`).join(' ')}`).includes(normalizar(busca)))
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [dados.produtos, linhas, tipo, busca])
+
+  return (
+    <div className="pagina">
+      <header className="pagina-topo">
+        <div>
+          <h1>Produtos</h1>
+          <p className="texto-suave">{lista.length} produtos · {lista.reduce((s, p) => s + p.variacoes.length, 0)} variações</p>
+        </div>
+        {ehProprietaria && <button className="botao botao-principal" onClick={() => setNovo(true)}><Icone nome="somar" /> Novo produto</button>}
+      </header>
+
+      <div className="filtros">
+        <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Buscar por nome, cor, tamanho ou código" />
+        <div className="fichas">
+          {Object.entries(TIPOS).map(([chave, nome]) => (
+            <button key={chave} className={`ficha ${tipo === chave ? 'ativo' : ''}`} onClick={() => setTipo(chave)}>{nome}</button>
+          ))}
+        </div>
+      </div>
+
+      {lista.length === 0 ? (
+        <Vazio icone="produtos" titulo="Nenhum produto encontrado">Tente outra palavra, ou cadastre um produto novo.</Vazio>
+      ) : (
+        <div className="grade-produtos">
+          {lista.map((p) => (
+            <Link key={p.id} to={`/produtos/${p.id}`} className="cartao produto">
+              <span className={`produto-marca tipo-${p.tipo}`}>{p.nome.charAt(0)}</span>
+              <div className="produto-info">
+                <strong>{p.nome}</strong>
+                <small>{p.categoria} · {p.marca}</small>
+                <small>{p.variacoes.length} {p.variacoes.length === 1 ? 'variação' : 'variações'} · {p.estoque} em estoque</small>
+              </div>
+              <div className="produto-direita">
+                <strong>{p.min === p.max ? formatarMoeda(p.min) : `${formatarMoeda(p.min)}+`}</strong>
+                {p.acabando > 0 && <Selo tom="ambar">{p.acabando} acabando</Selo>}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {novo && <NovoProduto aoFechar={() => setNovo(false)} />}
+    </div>
+  )
+}
+
+function NovoProduto({ aoFechar }) {
+  const { dados, criarProduto } = useDemo()
+  const navegar = useNavigate()
+  const [f, setF] = useState({
+    nome: '', tipo: 'lingerie', categoria: '', marca: '', preco: '', custo: '', minimo: '1',
+    cores: '', tamanhos: 'P, M, G', tonalidades: '', volume: '', controla_validade: true,
+  })
+  const [erro, setErro] = useState('')
+  const mudar = (campos) => setF({ ...f, ...campos })
+  const categorias = [...new Set(dados.produtos.map((p) => p.categoria))]
+  const marcas = [...new Set(dados.produtos.map((p) => p.marca))]
+
+  const cores = separar(f.cores)
+  const tamanhos = separar(f.tamanhos)
+  const tonalidades = separar(f.tonalidades)
+  const qtdVariacoes = f.tipo === 'lingerie' ? Math.max(cores.length, 1) * Math.max(tamanhos.length, 1) : Math.max(tonalidades.length, 1)
+
+  function salvar(e) {
+    e.preventDefault()
+    const preco = lerMoeda(f.preco)
+    const custo = lerMoeda(f.custo) || 0
+    if (!f.nome.trim()) return setErro('Dê um nome ao produto.')
+    if (!preco || Number.isNaN(preco)) return setErro('Informe o preço de venda.')
+    const id = criarProduto({
+      nome: f.nome.trim(), tipo: f.tipo, categoria: f.categoria.trim() || 'Sem categoria', marca: f.marca.trim() || 'Sem marca',
+      preco, custo, estoque_minimo: Number(f.minimo) || 0, cores, tamanhos, tonalidades,
+      volume: f.volume.trim(), controla_validade: f.tipo === 'cosmetico' && f.controla_validade,
+    })
+    navegar(`/produtos/${id}`)
+  }
+
+  return (
+    <Modal
+      titulo="Novo produto"
+      aoFechar={aoFechar}
+      rodape={<><button className="botao botao-fantasma" onClick={aoFechar}>Cancelar</button><button className="botao botao-principal" form="form-produto">Criar {qtdVariacoes} {qtdVariacoes === 1 ? 'variação' : 'variações'}</button></>}
+    >
+      <form id="form-produto" className="formulario" onSubmit={salvar}>
+        <div className="segmentado">
+          <button type="button" className={f.tipo === 'lingerie' ? 'ativo' : ''} onClick={() => mudar({ tipo: 'lingerie' })}>Lingerie</button>
+          <button type="button" className={f.tipo === 'cosmetico' ? 'ativo' : ''} onClick={() => mudar({ tipo: 'cosmetico' })}>Cosmético</button>
+          <button type="button" className={f.tipo === 'outro' ? 'ativo' : ''} onClick={() => mudar({ tipo: 'outro' })}>Outro</button>
+        </div>
+        <label className="campo"><span>Nome do produto</span><input value={f.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder={f.tipo === 'lingerie' ? 'Ex.: Sutiã renda Aurora' : 'Ex.: Batom matte Veludo'} autoFocus /></label>
+        <div className="grade-campos">
+          <label className="campo"><span>Categoria</span><input list="categorias" value={f.categoria} onChange={(e) => mudar({ categoria: e.target.value })} /></label>
+          <label className="campo"><span>Marca</span><input list="marcas" value={f.marca} onChange={(e) => mudar({ marca: e.target.value })} /></label>
+          <label className="campo"><span>Preço de venda</span><input inputMode="decimal" value={f.preco} onChange={(e) => mudar({ preco: e.target.value })} placeholder="0,00" /></label>
+          <label className="campo"><span>Custo</span><input inputMode="decimal" value={f.custo} onChange={(e) => mudar({ custo: e.target.value })} placeholder="0,00" /></label>
+          <label className="campo"><span>Estoque mínimo</span><input inputMode="numeric" value={f.minimo} onChange={(e) => mudar({ minimo: e.target.value })} /></label>
+        </div>
+        <datalist id="categorias">{categorias.map((c) => <option key={c} value={c} />)}</datalist>
+        <datalist id="marcas">{marcas.map((m) => <option key={m} value={m} />)}</datalist>
+
+        {f.tipo === 'lingerie' ? (
+          <>
+            <label className="campo"><span>Cores, separadas por vírgula</span><input value={f.cores} onChange={(e) => mudar({ cores: e.target.value })} placeholder="Preto, Nude, Vinho" /></label>
+            <label className="campo"><span>Tamanhos, separados por vírgula</span><input value={f.tamanhos} onChange={(e) => mudar({ tamanhos: e.target.value })} placeholder="P, M, G ou 40, 42, 44" /></label>
+          </>
+        ) : (
+          <>
+            <label className="campo"><span>Tonalidades ou fragrâncias (opcional)</span><input value={f.tonalidades} onChange={(e) => mudar({ tonalidades: e.target.value })} placeholder="Nude, Marsala" /></label>
+            <label className="campo"><span>Volume ou peso</span><input value={f.volume} onChange={(e) => mudar({ volume: e.target.value })} placeholder="200 ml" /></label>
+            {f.tipo === 'cosmetico' && (
+              <label className="campo-check"><input type="checkbox" checked={f.controla_validade} onChange={(e) => mudar({ controla_validade: e.target.checked })} /> Controlar lote e validade</label>
+            )}
+          </>
+        )}
+        <Aviso tom="oliva">
+          Vai criar <strong>{qtdVariacoes} {qtdVariacoes === 1 ? 'variação' : 'variações'}</strong>
+          {f.tipo === 'lingerie' && cores.length > 0 && tamanhos.length > 0 && <> ({cores.length} cores × {tamanhos.length} tamanhos)</>}, todas com estoque zero.
+          A quantidade entra depois, pela Entrada de estoque.
+        </Aviso>
+        <p className="texto-suave pequeno">Na versão real, aqui também ficam foto e dados fiscais (NCM, CEST), herdados da categoria.</p>
+        {erro && <Aviso tom="vinho">{erro}</Aviso>}
+      </form>
+    </Modal>
+  )
+}
