@@ -172,6 +172,26 @@ export function resultadoDoMes({ vendas, contas, taxas, imposto = 0 }) {
   return { faturamento, valorTaxas, valorImposto, custoPecas, lucroBruto, porCategoria, despesas, resultado: arred(lucroBruto - despesas) }
 }
 
+// ---------------- Encomendas ----------------
+// Encomenda NÃO mexe no estoque: é um pedido da cliente esperando a peça chegar.
+export const STATUS_ENCOMENDA = { aguardando: 'Aguardando', chegou: 'Chegou · avisar', entregue: 'Entregue', cancelada: 'Cancelada' }
+
+export function situacaoEncomenda({ status, previsao }, hoje) {
+  if (status === 'chegou') return { tom: 'oliva', texto: 'Chegou: avisar a cliente' }
+  if (status === 'entregue') return { tom: 'neutro', texto: 'Entregue' }
+  if (status === 'cancelada') return { tom: 'neutro', texto: 'Cancelada' }
+  if (!previsao) return { tom: 'neutro', texto: 'Sem data prevista' }
+  const dias = Math.round((new Date(`${previsao}T00:00:00`) - new Date(`${hoje}T00:00:00`)) / 86400000)
+  if (dias < 0) return { tom: 'vinho', texto: `Atrasada há ${-dias} ${-dias === 1 ? 'dia' : 'dias'}`, dias }
+  if (dias === 0) return { tom: 'ambar', texto: 'Chega hoje', dias }
+  if (dias <= 7) return { tom: 'ambar', texto: `Chega em ${dias} ${dias === 1 ? 'dia' : 'dias'}`, dias }
+  return { tom: 'neutro', texto: `Chega em ${dias} dias`, dias }
+}
+
+// Encomendas em aberto que esperam uma variação (para avisar quando a peça entra no estoque)
+export const encomendasDaVariacao = (encomendas, variacaoId) =>
+  encomendas.filter((e) => e.status === 'aguardando' && e.itens.some((i) => i.variacao_id === variacaoId))
+
 // ---------------- Dois CNPJs (Day e Fê) ----------------
 // Cada produto pertence a um CNPJ; cada CNPJ tem sua maquininha (suas taxas). Só a ME emite nota.
 export const taxasDe = (config, empresaId) => config.empresas?.[empresaId]?.taxas || {}

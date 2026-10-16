@@ -5,6 +5,8 @@ import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
 import { diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte } from '../lib/datas'
 import Icone from '../components/Icone'
 import { Metrica, Selo, seloValidade, Vazio } from '../components/ui'
+import { situacaoEncomenda } from '../demo/regras'
+import { textoItem } from './Encomendas'
 
 function saudacao() {
   const h = new Date().getHours()
@@ -14,6 +16,7 @@ function saudacao() {
 export default function Inicio() {
   const { dados, linhas, lotesComSaldo, variacaoPorId, produtoPorId, clientePorId, podeVerCustos } = useDemo()
   const hoje = hojeISO()
+  const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const mes = hoje.slice(0, 7)
   const mesAtual = new Date().getMonth()
 
@@ -39,6 +42,10 @@ export default function Inicio() {
   const pendentes = dados.vendas.filter((v) => v.nota?.status === 'pendente')
   const ultimas = [...dados.vendas].reverse().slice(0, 5)
   const contasProximas = (dados.contasPagar || []).filter((c) => !c.pagoEm && diasAte(c.vencimento) <= 7)
+  // encomendas que pedem atenção: chegaram (avisar), atrasadas, chegando em até 7 dias
+  const encomendasAtencao = (dados.encomendas || [])
+    .filter((e) => e.status === 'chegou' || (e.status === 'aguardando' && e.previsao && diasAte(e.previsao) <= 7))
+    .sort((a, b) => (b.status === 'chegou') - (a.status === 'chegou') || (a.previsao || '').localeCompare(b.previsao || ''))
 
   return (
     <div className="pagina">
@@ -123,6 +130,28 @@ export default function Inicio() {
                   </Link>
                 </li>
               ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="cartao bloco">
+          <header className="bloco-topo">
+            <h2><Icone nome="encomenda" tamanho={18} /> Encomendas</h2>
+            <Link to="/encomendas" className="botao-link">Ver tudo</Link>
+          </header>
+          {encomendasAtencao.length === 0 ? <Vazio icone="confirmar" titulo="Nenhuma encomenda pedindo atenção" /> : (
+            <ul className="lista">
+              {encomendasAtencao.slice(0, 6).map((e) => {
+                const sit = situacaoEncomenda(e, hoje)
+                return (
+                  <li key={e.id}>
+                    <Link to="/encomendas" className="linha-lista">
+                      <span><strong>{clientePorId.get(e.cliente_id)?.nome}</strong><small>{e.itens.map((i) => textoItem(i, linhaPorId)).join(', ')}</small></span>
+                      <Selo tom={sit.tom}>{sit.texto}</Selo>
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>

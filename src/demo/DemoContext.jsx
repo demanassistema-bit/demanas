@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { CONFIG_CALCULADORA, CONFIG_EMPRESAS, CONFIG_FISCAL, gerarDadosExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
+import { CONFIG_CALCULADORA, CONFIG_EMPRESAS, CONFIG_FISCAL, gerarDadosExemplo, gerarEncomendasExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
 import { alocarPorValidade, calcularSaldos, emiteNota, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
 
@@ -17,7 +17,8 @@ function carregar() {
     // quem já tinha dados guardados ganha os valores novos da calculadora sem perder o resto
     if (salvo?.versao === VERSAO_DADOS) {
       const dados = { ...salvo, config: { ...CONFIG_EMPRESAS, ...CONFIG_CALCULADORA, ...CONFIG_FISCAL, ...salvo.config } }
-      return dados.contasPagar ? dados : { ...dados, ...gerarFinanceiroExemplo(dados) }
+      const comFinanceiro = dados.contasPagar ? dados : { ...dados, ...gerarFinanceiroExemplo(dados) }
+      return comFinanceiro.encomendas ? comFinanceiro : { ...comFinanceiro, ...gerarEncomendasExemplo(comFinanceiro) }
     }
   } catch { /* sem armazenamento: começa do exemplo */ }
   return gerarDadosExemplo()
@@ -282,6 +283,17 @@ export function DemoProvider({ children }) {
     setDados((d) => ({ ...d, contasPagar: d.contasPagar.map((c) => (c.id === id ? { ...c, pagoEm } : c)) }))
   }, [])
 
+  // ---------------- Encomendas (não mexem no estoque) ----------------
+  const criarEncomenda = useCallback((campos) => {
+    const id = `enc${Date.now()}`
+    setDados((d) => ({ ...d, encomendas: [...(d.encomendas || []), { id, status: 'aguardando', criado_em: agoraISO(), criado_por: usuario, ...campos }] }))
+    return id
+  }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const atualizarEncomenda = useCallback((id, campos) => {
+    setDados((d) => ({ ...d, encomendas: d.encomendas.map((e) => (e.id === id ? { ...e, ...campos } : e)) }))
+  }, [])
+
   const atualizarConfig = useCallback((campos) => {
     setDados((d) => ({ ...d, config: { ...d.config, ...campos } }))
   }, [])
@@ -296,6 +308,7 @@ export function DemoProvider({ children }) {
         concluirVenda, cancelarVenda, reenviarNota, registrarEntrada, registrarAjuste,
         criarProduto, atualizarProduto, criarCliente, atualizarConfig, restaurar,
         abrirCaixa, lancarNoCaixa, fecharCaixa, criarConta, marcarPaga,
+        criarEncomenda, atualizarEncomenda,
       }}
     >
       {children}

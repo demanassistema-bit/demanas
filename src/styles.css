@@ -370,6 +370,17 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .perfil-fiscal summary::-webkit-details-marker { display: none; }
 .perfil-fiscal[open] summary { margin-bottom: 12px; }
 .perfil-fiscal .campo-check { margin-top: 10px; }
+/* ---------------- Encomendas ---------------- */
+.lista-encomendas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.encomenda { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.encomenda-cliente { font-weight: 700; text-decoration: none; color: var(--texto); }
+.acoes-encomenda { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 4px; }
+.campo-data { display: flex; flex-direction: column; gap: 2px; }
+.campo-data input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borda); background: var(--cartao); min-height: 42px; }
+.resultado-com-acao { display: flex; align-items: stretch; gap: 6px; }
+.resultado-com-acao > button:first-child { flex: 1; }
+.resultado-com-acao .botao { align-self: center; padding: 8px 12px; }
+@media (max-width: 900px) { .lista-encomendas { grid-template-columns: minmax(0, 1fr); } }
 .texto-cnpj { color: var(--primaria); font-weight: 600; }
 .separador-fichas { width: 1px; align-self: stretch; background: var(--borda); margin: 0 4px; }
 .segmentado button:disabled { cursor: default; }

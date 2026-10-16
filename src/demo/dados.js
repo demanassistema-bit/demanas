@@ -256,7 +256,7 @@ export function gerarDadosExemplo(agora = new Date()) {
       ...CONFIG_FISCAL,
     },
   }
-  return { ...resultado, ...gerarFinanceiroExemplo(resultado, agora) }
+  return { ...resultado, ...gerarFinanceiroExemplo(resultado, agora), ...gerarEncomendasExemplo(resultado, agora) }
 }
 
 // ---------------- Financeiro de EXEMPLO ----------------
@@ -312,6 +312,23 @@ export function gerarFinanceiroExemplo(dados, agora = new Date()) {
     })
   }
   return { contasPagar, caixas }
+}
+
+// ---------------- Encomendas de EXEMPLO ----------------
+export function gerarEncomendasExemplo(dados, agora = new Date()) {
+  const { porVariacao } = calcularSaldos(dados.movimentacoes)
+  const zeradas = dados.variacoes.filter((v) => (porVariacao.get(v.id) || 0) <= 0)
+  const pecas = zeradas.length >= 3 ? zeradas : dados.variacoes
+  const dia = (n) => paraISO(somarDias(agora, n))
+  const c = dados.clientes
+  const lista = [
+    { cliente_id: c[5].id, itens: [{ variacao_id: pecas[0].id, quantidade: 1 }], previsao: dia(-2), status: 'aguardando', sinal: { valor: 30, forma: 'pix' }, observacao: 'Fornecedor atrasou (exemplo)' },
+    { cliente_id: c[7].id, itens: [{ variacao_id: pecas[1].id, quantidade: 1 }], previsao: dia(0), status: 'aguardando', sinal: null, observacao: '' },
+    { cliente_id: c[2].id, itens: [{ descricao: 'Sutiã renda Aurora vinho 48 (tamanho que a loja não trabalha)', quantidade: 1 }], previsao: dia(6), status: 'aguardando', sinal: { valor: 45, forma: 'dinheiro' }, observacao: 'Pedir junto com a próxima compra da Dália' },
+    // esta já chegou e entrou no estoque: dá para entregar e vender na demonstração
+    { cliente_id: c[10].id, itens: [{ variacao_id: (dados.variacoes.find((v) => (porVariacao.get(v.id) || 0) >= 3) || pecas[2]).id, quantidade: 2 }], previsao: dia(-1), status: 'chegou', sinal: { valor: 20, forma: 'pix' }, observacao: '' },
+  ]
+  return { encomendas: lista.map((e, i) => ({ id: `enc${i + 1}`, criado_em: somarDias(agora, -10 + i).toISOString(), ...e })) }
 }
 
 // Os dois CNPJs da loja (informado pela Bruna em 16/10/2026): Day é ME no Simples, Fê é MEI.

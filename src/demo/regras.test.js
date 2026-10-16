@@ -6,7 +6,27 @@ import {
   recebiveisDaVenda, saldoEsperadoCaixa, resultadoDoMes,
   faltasPerfilFiscal, situacaoCertificado,
   dividirDesconto, taxasDe, emiteNota, empresaEmissora,
+  situacaoEncomenda, encomendasDaVariacao,
 } from './regras.js'
+
+test('encomendas: atrasada, chega hoje, na semana, chegou', () => {
+  const hoje = '2026-10-16'
+  assert.deepEqual(situacaoEncomenda({ status: 'aguardando', previsao: '2026-10-14' }, hoje), { tom: 'vinho', texto: 'Atrasada há 2 dias', dias: -2 })
+  assert.equal(situacaoEncomenda({ status: 'aguardando', previsao: '2026-10-16' }, hoje).texto, 'Chega hoje')
+  assert.equal(situacaoEncomenda({ status: 'aguardando', previsao: '2026-10-17' }, hoje).texto, 'Chega em 1 dia')
+  assert.equal(situacaoEncomenda({ status: 'aguardando', previsao: '2026-11-30' }, hoje).tom, 'neutro')
+  assert.equal(situacaoEncomenda({ status: 'chegou', previsao: '2026-10-01' }, hoje).tom, 'oliva')
+  assert.equal(situacaoEncomenda({ status: 'aguardando', previsao: '' }, hoje).texto, 'Sem data prevista')
+})
+
+test('encomendas: acha quem espera uma peça, só entre as aguardando', () => {
+  const encomendas = [
+    { id: 'a', status: 'aguardando', itens: [{ variacao_id: 'v1' }] },
+    { id: 'b', status: 'entregue', itens: [{ variacao_id: 'v1' }] },
+    { id: 'c', status: 'aguardando', itens: [{ descricao: 'Sutiã 48 vinho' }] },
+  ]
+  assert.deepEqual(encomendasDaVariacao(encomendas, 'v1').map((e) => e.id), ['a'])
+})
 
 test('dois CNPJs: desconto dividido na proporção e centavos fecham', () => {
   assert.deepEqual(dividirDesconto([{ chave: 'day', subtotal: 100 }, { chave: 'fe', subtotal: 50 }], 10), { day: 6.67, fe: 3.33 })

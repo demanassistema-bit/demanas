@@ -9,6 +9,7 @@ const ITENS = [
   { para: '/', nome: 'Início', icone: 'inicio', fim: true },
   { para: '/vender', nome: 'Nova venda', icone: 'vender' },
   { para: '/vendas', nome: 'Vendas', icone: 'vendas' },
+  { para: '/encomendas', nome: 'Encomendas', icone: 'encomenda' },
   { para: '/produtos', nome: 'Produtos', icone: 'produtos' },
   { para: '/estoque', nome: 'Estoque', icone: 'estoque' },
   { para: '/clientes', nome: 'Clientes', icone: 'clientes' },

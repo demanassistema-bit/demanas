@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda, FORMAS_PAGAMENTO, CANAIS } from '../lib/moeda'
 import { diasDesde } from '../lib/datas'
@@ -39,6 +39,7 @@ function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, f
       {subtitulo && <p className="texto-suave pequeno">{subtitulo}</p>}
       {pagamentos.map((p, i) => (
         <div key={i} className="pagamento-linha">
+          {p.sinal && <small className="texto-positivo">Sinal já pago na encomenda</small>}
           <div className="formas">
             {formas.map(([chave, nome]) => (
               <button key={chave} className={`forma ${p.forma === chave ? 'ativo' : ''}`} onClick={() => mudar(i, { forma: chave })}>{nome}</button>
@@ -78,17 +79,22 @@ export function valoresPagamento(pagamentos, total) {
 }
 
 export default function NovaVenda() {
-  const { dados, linhas, clientePorId, ehProprietaria, podeVerCustos, concluirVenda, criarCliente } = useDemo()
+  const { dados, linhas, clientePorId, ehProprietaria, podeVerCustos, concluirVenda, criarCliente, atualizarEncomenda } = useDemo()
   const config = dados.config
   const empresas = config.empresas
 
-  const [estado, setEstado] = useState(vazio)
+  // Entrega de encomenda: a venda já abre com as peças e a cliente
+  const [params] = useSearchParams()
+  const [encomenda, setEncomenda] = useState(() => (dados.encomendas || []).find((e) => e.id === params.get('encomenda') && e.status !== 'entregue') || null)
+  const [estado, setEstado] = useState(() => (encomenda
+    ? { carrinho: encomenda.itens.filter((i) => i.variacao_id).map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })), etapa: 'itens', inicio: Date.now() }
+    : vazio()))
   const { carrinho, etapa } = estado
   const [busca, setBusca] = useState('')
   const [erro, setErro] = useState('')
 
   // pagamento
-  const [clienteId, setClienteId] = useState(null)
+  const [clienteId, setClienteId] = useState(encomenda?.cliente_id || null)
   const [buscaCliente, setBuscaCliente] = useState('')
   const [cadastro, setCadastro] = useState(null) // { nome, whatsapp } quando aberto
   const [canal, setCanal] = useState('loja')
@@ -181,7 +187,16 @@ export default function NovaVenda() {
 
   function irParaPagamento() {
     setErro('')
-    setPagamentosPor(Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()])))
+    const iniciais = Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()]))
+    // sinal já pago na encomenda entra como a primeira forma de pagamento da primeira parte
+    const sinal = encomenda?.sinal
+    if (sinal?.valor > 0 && partes[0] && sinal.valor < partes[0].total) {
+      iniciais[partes[0].chave] = [
+        { forma: sinal.forma, valorTexto: paraCampoMoeda(sinal.valor), parcelas: 1, sinal: true },
+        { forma: 'pix', valorTexto: paraCampoMoeda(arred(partes[0].total - sinal.valor)), parcelas: 1 },
+      ]
+    }
+    setPagamentosPor(iniciais)
     setEstado((e) => ({ ...e, etapa: 'pagamento' }))
   }
 
@@ -200,7 +215,11 @@ export default function NovaVenda() {
       })),
       cliente_id, canal,
     })
-    if (r.erro) return setErro(r.erro)
+    if (r.erro) return setErro(encomenda ? `${r.erro} Dê entrada da peça no Estoque antes de entregar a encomenda.` : r.erro)
+    if (encomenda) {
+      atualizarEncomenda(encomenda.id, { status: 'entregue', entregue_em: new Date().toISOString(), vendas: r.vendas.map((v) => v.id) })
+      setEncomenda(null)
+    }
     setResultado({ ids: r.vendas.map((v) => v.id), segundos: Math.max(1, Math.round((Date.now() - estado.inicio) / 1000)) })
     setEstado((e) => ({ ...e, etapa: 'concluida' }))
   }
@@ -335,6 +354,9 @@ export default function NovaVenda() {
         {duasEmpresas && (
           <Aviso tom="ambar">Esta venda tem peças dos dois CNPJs. Cobre cada parte na maquininha do seu CNPJ.</Aviso>
         )}
+        {encomenda?.sinal?.valor > 0 && (
+          <Aviso tom="oliva">A cliente já pagou {formatarMoeda(encomenda.sinal.valor)} de sinal ({FORMAS_PAGAMENTO[encomenda.sinal.forma]}). Ele já está na primeira forma de pagamento: cobre só o restante.</Aviso>
+        )}
         {partes.map((p) => (
           <BlocoPagamento
             key={p.chave}
@@ -369,7 +391,13 @@ export default function NovaVenda() {
   // ---------------- Itens ----------------
   return (
     <div className="pagina pagina-estreita com-rodape-fixo">
-      <header className="pagina-topo"><h1>Nova venda</h1></header>
+      <header className="pagina-topo"><h1>{encomenda ? 'Entregar encomenda' : 'Nova venda'}</h1></header>
+      {encomenda && (
+        <Aviso tom="oliva">
+          Encomenda de <strong>{clientePorId.get(encomenda.cliente_id)?.nome}</strong>. As peças já estão na venda.
+          {encomenda.itens.some((i) => i.descricao) && ' Peças descritas à mão precisam ser cadastradas e adicionadas pela busca.'}
+        </Aviso>
+      )}
 
       <div className="busca-venda">
         <CampoBusca grande valor={busca} aoMudar={setBusca} placeholder="Buscar produto, cor, tamanho ou código" autoFocus />
@@ -382,7 +410,7 @@ export default function NovaVenda() {
         <ul className="lista-opcoes resultados-venda">
           {resultados.length === 0 && <li className="texto-suave recuo">Nada encontrado para "{busca}".</li>}
           {resultados.map((l) => (
-            <li key={l.id}>
+            <li key={l.id} className="resultado-com-acao">
               <button onClick={() => adicionar(l)} disabled={!config.permitirEstoqueNegativo && l.saldo <= 0}>
                 <span><strong>{l.produto.nome}</strong><small>{l.nomeVariacao} · {empresas[l.produto.empresa_id]?.apelido}</small></span>
                 <span className="resultado-direita">
@@ -390,6 +418,7 @@ export default function NovaVenda() {
                   <small className={l.saldo <= 0 ? 'texto-alerta' : 'texto-suave'}>{l.saldo <= 0 ? 'sem estoque' : `${l.saldo} em estoque`}</small>
                 </span>
               </button>
+              {l.saldo <= 0 && <Link className="botao botao-secundario" to={`/encomendas?nova=${l.id}`}>Encomendar</Link>}
             </li>
           ))}
         </ul>

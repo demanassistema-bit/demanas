@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { formatarMoeda, lerMoeda, paraCampoMoeda, arred } from '../lib/moeda'
 import { diasAte, formatarDataHora, hojeISO, paraISO, somarDias } from '../lib/datas'
-import { normalizar, TIPOS_MOVIMENTO } from '../demo/regras'
+import { encomendasDaVariacao, normalizar, TIPOS_MOVIMENTO } from '../demo/regras'
 import { Aviso, CampoBusca, Selo, SeletorVariacao, seloValidade, Vazio } from '../components/ui'
 
 const ABAS = { situacao: 'Situação', entrada: 'Entrada', ajuste: 'Ajuste e perda', movimentacoes: 'Movimentações' }
@@ -102,7 +102,7 @@ function Situacao() {
 }
 
 function Entrada() {
-  const { registrarEntrada, linhas } = useDemo()
+  const { dados, registrarEntrada, linhas, clientePorId } = useDemo()
   const [escolhidaId, setEscolhidaId] = useState(null)
   const escolhida = linhas.find((l) => l.id === escolhidaId)
   const [f, setF] = useState({ quantidade: '', custo: '', lote: '', validade: paraISO(somarDias(new Date(), 365)), fornecedor: '' })
@@ -128,7 +128,10 @@ function Entrada() {
       variacao_id: escolhida.id, quantidade, custo, numero_lote: f.lote.trim(), validade: f.validade,
       motivo: f.fornecedor.trim() ? `Compra de ${f.fornecedor.trim()}` : 'Entrada de mercadoria',
     })
-    setFeito(`+${quantidade} de ${escolhida.produto.nome} (${escolhida.nomeVariacao}). Agora há ${escolhida.saldo + quantidade} em estoque.`)
+    const esperando = encomendasDaVariacao(dados.encomendas || [], escolhida.id)
+    const donas = esperando.map((e) => clientePorId.get(e.cliente_id)?.nome.split(' ')[0]).filter(Boolean)
+    setFeito(`+${quantidade} de ${escolhida.produto.nome} (${escolhida.nomeVariacao}). Agora há ${escolhida.saldo + quantidade} em estoque.`
+      + (donas.length ? ` Atenção: esta peça tem encomenda de ${donas.join(', ')}. Separe e marque "Chegou" em Encomendas.` : ''))
     setF({ ...f, quantidade: '', lote: '' })
   }
 

@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Inicio from './pages/Inicio'
 import NovaVenda from './pages/NovaVenda'
 import Vendas from './pages/Vendas'
+import Encomendas from './pages/Encomendas'
 import Produtos from './pages/Produtos'
 import FichaProduto from './pages/FichaProduto'
 import Estoque from './pages/Estoque'
@@ -35,6 +36,7 @@ export default function App() {
           <Route index element={<Inicio />} />
           <Route path="vender" element={<NovaVenda />} />
           <Route path="vendas" element={<Vendas />} />
+          <Route path="encomendas" element={<Encomendas />} />
           <Route path="produtos" element={<Produtos />} />
           <Route path="produtos/:produtoId" element={<FichaProduto />} />
           <Route path="estoque" element={<Estoque />} />

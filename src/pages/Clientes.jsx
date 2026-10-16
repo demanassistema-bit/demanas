@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, CANAIS } from '../lib/moeda'
-import { diasDesde, formatarData, formatarDataHora, NOMES_MESES } from '../lib/datas'
-import { nomeVariacao, normalizar } from '../demo/regras'
+import { diasDesde, formatarData, formatarDataHora, hojeISO, NOMES_MESES } from '../lib/datas'
+import { nomeVariacao, normalizar, situacaoEncomenda } from '../demo/regras'
+import { textoItem } from './Encomendas'
 import Modal from '../components/Modal'
 import Icone from '../components/Icone'
 import { Aviso, CampoBusca, Selo, Vazio } from '../components/ui'
@@ -134,7 +135,8 @@ const MENSAGENS = {
 export function FichaCliente() {
   const { clienteId } = useParams()
   const clientes = useResumoClientes()
-  const { variacaoPorId, produtoPorId } = useDemo()
+  const { dados, linhas, variacaoPorId, produtoPorId } = useDemo()
+  const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const [modelo, setModelo] = useState('novidades')
   const c = clientes.find((x) => x.id === clienteId)
   if (!c) return <Navigate to="/clientes" replace />
@@ -184,6 +186,30 @@ export function FichaCliente() {
           </dl>
         </section>
       </div>
+
+      {(() => {
+        const minhas = (dados.encomendas || []).filter((e) => e.cliente_id === c.id && (e.status === 'aguardando' || e.status === 'chegou'))
+        if (!minhas.length) return null
+        return (
+          <section className="cartao secao">
+            <header className="bloco-topo">
+              <h2><Icone nome="encomenda" tamanho={18} /> Encomendas em aberto</h2>
+              <Link to="/encomendas" className="botao-link">Encomendas</Link>
+            </header>
+            <ul className="lista">
+              {minhas.map((e) => {
+                const sit = situacaoEncomenda(e, hojeISO())
+                return (
+                  <li key={e.id} className="linha-lista">
+                    <span><strong>{e.itens.map((i) => textoItem(i, linhaPorId)).join(', ')}</strong><small>{e.previsao ? `previsão ${formatarData(e.previsao)}` : 'sem data'}{e.sinal?.valor > 0 && ` · sinal ${formatarMoeda(e.sinal.valor)}`}</small></span>
+                    <Selo tom={sit.tom}>{sit.texto}</Selo>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )
+      })()}
 
       <section className="cartao secao">
         <h2>Histórico de compras</h2>
