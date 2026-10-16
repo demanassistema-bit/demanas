@@ -172,6 +172,20 @@ export function resultadoDoMes({ vendas, contas, taxas, imposto = 0 }) {
   return { faturamento, valorTaxas, valorImposto, custoPecas, lucroBruto, porCategoria, despesas, resultado: arred(lucroBruto - despesas) }
 }
 
+// ---------------- Excluir com segurança ----------------
+// Produto sem nenhum histórico pode ser apagado; com histórico, é arquivado (o histórico não quebra).
+export function podeApagarProduto(produtoId, { variacoes, movimentacoes, vendas, encomendas = [] }) {
+  const ids = new Set(variacoes.filter((v) => v.produto_id === produtoId).map((v) => v.id))
+  const usado = movimentacoes.some((m) => ids.has(m.variacao_id))
+    || vendas.some((v) => v.itens.some((i) => ids.has(i.variacao_id)))
+    || encomendas.some((e) => e.itens.some((i) => ids.has(i.variacao_id)))
+  return !usado
+}
+
+// Cliente sem compras nem encomendas pode ser apagada; com histórico, só os dados pessoais saem (LGPD)
+export const podeApagarCliente = (clienteId, { vendas, encomendas = [] }) =>
+  !vendas.some((v) => v.cliente_id === clienteId) && !encomendas.some((e) => e.cliente_id === clienteId)
+
 // ---------------- Encomendas ----------------
 // Encomenda NÃO mexe no estoque: é um pedido da cliente esperando a peça chegar.
 export const STATUS_ENCOMENDA = { aguardando: 'Aguardando', chegou: 'Chegou · avisar', entregue: 'Entregue', cancelada: 'Cancelada' }

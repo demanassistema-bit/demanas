@@ -3,7 +3,7 @@ import { useDemo } from '../../demo/DemoContext'
 import { arred, formatarMoeda, lerMoeda } from '../../lib/moeda'
 import { diasAte, formatarData, hojeISO, paraISO, deISO } from '../../lib/datas'
 import { CATEGORIAS_DESPESA } from '../../demo/regras'
-import Modal from '../../components/Modal'
+import Modal, { BotaoPerigo } from '../../components/Modal'
 import Icone from '../../components/Icone'
 import { Aviso, Metrica, Selo, Vazio } from '../../components/ui'
 
@@ -19,7 +19,7 @@ function seloVencimento(conta) {
 }
 
 export default function APagar() {
-  const { dados, marcarPaga } = useDemo()
+  const { dados, marcarPaga, excluirConta } = useDemo()
   const [filtro, setFiltro] = useState('abertas')
   const [nova, setNova] = useState(false)
   const hoje = hojeISO()
@@ -69,6 +69,7 @@ export default function APagar() {
                 {c.pagoEm
                   ? <button className="botao-link" onClick={() => marcarPaga(c.id, null)}>Desfazer</button>
                   : <button className="botao-link" onClick={() => marcarPaga(c.id, hoje)}><Icone nome="confirmar" tamanho={16} /> Marcar como paga</button>}
+                <span className="excluir-discreto"><BotaoPerigo texto="Excluir" aoConfirmar={() => excluirConta(c.id)} /></span>
               </span>
             </li>
           ))}

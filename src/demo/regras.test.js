@@ -7,7 +7,27 @@ import {
   faltasPerfilFiscal, situacaoCertificado,
   dividirDesconto, taxasDe, emiteNota, empresaEmissora,
   situacaoEncomenda, encomendasDaVariacao,
+  podeApagarProduto, podeApagarCliente,
 } from './regras.js'
+
+test('excluir: produto com histórico é arquivado, sem histórico é apagado', () => {
+  const base = {
+    variacoes: [{ id: 'v1', produto_id: 'p1' }, { id: 'v2', produto_id: 'p2' }, { id: 'v3', produto_id: 'p3' }],
+    movimentacoes: [{ variacao_id: 'v1', quantidade: 3 }],
+    vendas: [],
+    encomendas: [{ cliente_id: 'c1', itens: [{ variacao_id: 'v3' }] }],
+  }
+  assert.equal(podeApagarProduto('p1', base), false) // tem movimentação
+  assert.equal(podeApagarProduto('p2', base), true)  // cadastrado por engano
+  assert.equal(podeApagarProduto('p3', base), false) // tem encomenda
+})
+
+test('excluir: cliente com compra ou encomenda só perde os dados pessoais', () => {
+  const dados = { vendas: [{ cliente_id: 'c1' }], encomendas: [{ cliente_id: 'c2', itens: [] }] }
+  assert.equal(podeApagarCliente('c1', dados), false)
+  assert.equal(podeApagarCliente('c2', dados), false)
+  assert.equal(podeApagarCliente('c3', dados), true)
+})
 
 test('encomendas: atrasada, chega hoje, na semana, chegou', () => {
   const hoje = '2026-10-16'

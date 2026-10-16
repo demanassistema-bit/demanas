@@ -1,8 +1,9 @@
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { formatarMoeda, formatarPercentual } from '../lib/moeda'
 import { formatarData, formatarDataHora } from '../lib/datas'
-import { emiteNota, percentual, TIPOS_MOVIMENTO } from '../demo/regras'
+import { emiteNota, percentual, podeApagarProduto, TIPOS_MOVIMENTO } from '../demo/regras'
+import { BotaoPerigo } from '../components/Modal'
 import Icone from '../components/Icone'
 import { Selo, seloValidade } from '../components/ui'
 
@@ -10,7 +11,8 @@ const NOMES_TIPO = { lingerie: 'Lingerie', cosmetico: 'Cosmético', outro: 'Outr
 
 export default function FichaProduto() {
   const { produtoId } = useParams()
-  const { dados, linhas, lotesComSaldo, produtoPorId, podeVerCustos, ehProprietaria, atualizarProduto } = useDemo()
+  const { dados, linhas, lotesComSaldo, produtoPorId, podeVerCustos, ehProprietaria, atualizarProduto, excluirProduto, reativarProduto } = useDemo()
+  const navegar = useNavigate()
   const produto = produtoPorId.get(produtoId)
   if (!produto) return <Navigate to="/produtos" replace />
 
@@ -26,7 +28,7 @@ export default function FichaProduto() {
       <Link to="/produtos" className="botao-link voltar"><Icone nome="voltar" tamanho={18} /> Produtos</Link>
       <header className="pagina-topo">
         <div>
-          <h1>{produto.nome}</h1>
+          <h1>{produto.nome} {!produto.ativo && <Selo>Arquivado</Selo>}</h1>
           <p className="texto-suave">{NOMES_TIPO[produto.tipo]} · {produto.categoria} · {produto.marca}</p>
         </div>
         <Link to={`/estoque?aba=entrada`} className="botao botao-secundario"><Icone nome="estoque" /> Entrada de estoque</Link>
@@ -101,6 +103,34 @@ export default function FichaProduto() {
           ))}
         </ul>
       </section>
+
+      {ehProprietaria && (
+        <section className="cartao secao">
+          {produto.ativo ? (
+            <>
+              <h2>Excluir produto</h2>
+              {podeApagarProduto(produto.id, dados) ? (
+                <p className="texto-suave pequeno">Este produto nunca foi vendido nem teve estoque: pode ser apagado de vez.</p>
+              ) : (
+                <p className="texto-suave pequeno">
+                  Este produto já tem histórico (vendas ou estoque). Ele vai ser <strong>arquivado</strong>: sai das listas e da venda, mas o histórico continua certo. Dá para reativar depois.
+                  {total > 0 && ` Ainda há ${total} ${total === 1 ? 'peça' : 'peças'} em estoque: se elas não existem mais, lance uma perda no Estoque antes.`}
+                </p>
+              )}
+              <BotaoPerigo
+                texto={podeApagarProduto(produto.id, dados) ? 'Apagar produto' : 'Arquivar produto'}
+                aoConfirmar={() => { if (excluirProduto(produto.id) === 'apagado') navegar('/produtos') }}
+              />
+            </>
+          ) : (
+            <>
+              <h2>Produto arquivado</h2>
+              <p className="texto-suave pequeno">Não aparece nas listas nem na venda. O histórico continua guardado.</p>
+              <button className="botao botao-secundario" onClick={() => reativarProduto(produto.id)}>Reativar produto</button>
+            </>
+          )}
+        </section>
+      )}
     </div>
   )
 }

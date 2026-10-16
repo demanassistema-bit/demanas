@@ -284,7 +284,7 @@ export default function NovaVenda() {
   // ---------------- Pagamento ----------------
   if (etapa === 'pagamento') {
     const clientesEncontrados = buscaCliente.trim()
-      ? dados.clientes.filter((c) => normalizar(`${c.nome} ${c.whatsapp}`).includes(normalizar(buscaCliente))).slice(0, 5)
+      ? dados.clientes.filter((c) => !c.removida && normalizar(`${c.nome} ${c.whatsapp}`).includes(normalizar(buscaCliente))).slice(0, 5)
       : []
     const cliente = clientePorId.get(clienteId)
     const formas = Object.entries(FORMAS_PAGAMENTO).filter(([f]) => f !== 'crediario' || config.aceitaCrediario)

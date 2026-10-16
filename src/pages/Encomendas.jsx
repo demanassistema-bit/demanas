@@ -29,7 +29,7 @@ export function linkWhatsApp(cliente, texto) {
 }
 
 export default function Encomendas() {
-  const { dados, linhas, clientePorId, atualizarEncomenda } = useDemo()
+  const { dados, linhas, clientePorId, atualizarEncomenda, excluirEncomenda, ehProprietaria } = useDemo()
   const [params, setParams] = useSearchParams()
   const navegar = useNavigate()
   const filtro = params.get('filtro') || 'abertas'
@@ -105,6 +105,11 @@ export default function Encomendas() {
                 {e.status === 'entregue' && e.vendas?.length > 0 && (
                   <p className="pequeno">Virou a venda nº {e.vendas.map((id) => dados.vendas.find((v) => v.id === id)?.numero).filter(Boolean).join(' e ')}.</p>
                 )}
+                {ehProprietaria && (
+                  <div className="excluir-discreto">
+                    <BotaoPerigo texto="Excluir encomenda" aoConfirmar={() => excluirEncomenda(e.id)} />
+                  </div>
+                )}
               </li>
             )
           })}
@@ -131,7 +136,7 @@ function NovaEncomenda({ variacaoInicial, aoFechar }) {
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const cliente = dados.clientes.find((c) => c.id === clienteId)
   const encontrados = buscaCliente.trim()
-    ? dados.clientes.filter((c) => normalizar(`${c.nome} ${c.whatsapp}`).includes(normalizar(buscaCliente))).slice(0, 5)
+    ? dados.clientes.filter((c) => !c.removida && normalizar(`${c.nome} ${c.whatsapp}`).includes(normalizar(buscaCliente))).slice(0, 5)
     : []
 
   function adicionarLivre() {

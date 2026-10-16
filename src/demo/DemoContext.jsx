@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { CONFIG_CALCULADORA, CONFIG_EMPRESAS, CONFIG_FISCAL, gerarDadosExemplo, gerarEncomendasExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
-import { alocarPorValidade, calcularSaldos, emiteNota, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
+import { alocarPorValidade, calcularSaldos, emiteNota, nomeVariacao, novoCustoMedio, podeApagarCliente, podeApagarProduto, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
 
 /*
@@ -283,6 +283,55 @@ export function DemoProvider({ children }) {
     setDados((d) => ({ ...d, contasPagar: d.contasPagar.map((c) => (c.id === id ? { ...c, pagoEm } : c)) }))
   }, [])
 
+  // ---------------- Excluir com segurança ----------------
+  // Devolve 'apagado' ou 'arquivado'
+  const excluirProduto = useCallback((id) => {
+    const d = atual.current
+    if (podeApagarProduto(id, d)) {
+      setDados({ ...d, produtos: d.produtos.filter((p) => p.id !== id), variacoes: d.variacoes.filter((v) => v.produto_id !== id) })
+      return 'apagado'
+    }
+    setDados({
+      ...d,
+      produtos: d.produtos.map((p) => (p.id === id ? { ...p, ativo: false, arquivado_em: agoraISO() } : p)),
+      variacoes: d.variacoes.map((v) => (v.produto_id === id ? { ...v, ativo: false } : v)),
+    })
+    return 'arquivado'
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reativarProduto = useCallback((id) => {
+    setDados((d) => ({
+      ...d,
+      produtos: d.produtos.map((p) => (p.id === id ? { ...p, ativo: true, arquivado_em: null } : p)),
+      variacoes: d.variacoes.map((v) => (v.produto_id === id ? { ...v, ativo: true } : v)),
+    }))
+  }, [])
+
+  // Devolve 'apagado' ou 'anonimizado' (as compras ficam, sem os dados pessoais)
+  const excluirCliente = useCallback((id) => {
+    const d = atual.current
+    if (podeApagarCliente(id, d)) {
+      setDados({ ...d, clientes: d.clientes.filter((c) => c.id !== id) })
+      return 'apagado'
+    }
+    setDados({
+      ...d,
+      clientes: d.clientes.map((c) => (c.id === id ? {
+        ...c, nome: 'Cliente removida', whatsapp: '', email: '', nascimento: '', preferencias: {},
+        observacoes: '', aceita_contato: false, removida: true, removida_em: agoraISO(),
+      } : c)),
+    })
+    return 'anonimizado'
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const excluirEncomenda = useCallback((id) => {
+    setDados((d) => ({ ...d, encomendas: d.encomendas.filter((e) => e.id !== id) }))
+  }, [])
+
+  const excluirConta = useCallback((id) => {
+    setDados((d) => ({ ...d, contasPagar: d.contasPagar.filter((c) => c.id !== id) }))
+  }, [])
+
   // ---------------- Encomendas (não mexem no estoque) ----------------
   const criarEncomenda = useCallback((campos) => {
     const id = `enc${Date.now()}`
@@ -309,6 +358,7 @@ export function DemoProvider({ children }) {
         criarProduto, atualizarProduto, criarCliente, atualizarConfig, restaurar,
         abrirCaixa, lancarNoCaixa, fecharCaixa, criarConta, marcarPaga,
         criarEncomenda, atualizarEncomenda,
+        excluirProduto, reativarProduto, excluirCliente, excluirEncomenda, excluirConta,
       }}
     >
       {children}

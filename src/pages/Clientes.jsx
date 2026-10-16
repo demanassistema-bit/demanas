@@ -3,9 +3,9 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, CANAIS } from '../lib/moeda'
 import { diasDesde, formatarData, formatarDataHora, hojeISO, NOMES_MESES } from '../lib/datas'
-import { nomeVariacao, normalizar, situacaoEncomenda } from '../demo/regras'
+import { nomeVariacao, normalizar, podeApagarCliente, situacaoEncomenda } from '../demo/regras'
 import { textoItem } from './Encomendas'
-import Modal from '../components/Modal'
+import Modal, { BotaoPerigo } from '../components/Modal'
 import Icone from '../components/Icone'
 import { Aviso, CampoBusca, Selo, Vazio } from '../components/ui'
 
@@ -37,7 +37,7 @@ export default function Clientes() {
   const mes = new Date().getMonth() + 1
 
   const corteMelhores = [...clientes].sort((a, b) => b.total - a.total)[4]?.total ?? 0
-  const lista = clientes
+  const lista = clientes.filter((c) => !c.removida)
     .filter((c) => {
       if (segmento === 'aniversario') return c.nascimento && Number(c.nascimento.slice(5, 7)) === mes
       if (segmento === 'sumidas') return c.ultima && diasDesde(c.ultima) > 60
@@ -52,7 +52,7 @@ export default function Clientes() {
       <header className="pagina-topo">
         <div>
           <h1>Clientes</h1>
-          <p className="texto-suave">{clientes.length} clientes cadastradas</p>
+          <p className="texto-suave">{clientes.filter((c) => !c.removida).length} clientes cadastradas</p>
         </div>
         <button className="botao botao-principal" onClick={() => setNova(true)}><Icone nome="somar" /> Nova cliente</button>
       </header>
@@ -135,11 +135,12 @@ const MENSAGENS = {
 export function FichaCliente() {
   const { clienteId } = useParams()
   const clientes = useResumoClientes()
-  const { dados, linhas, variacaoPorId, produtoPorId } = useDemo()
+  const { dados, linhas, variacaoPorId, produtoPorId, ehProprietaria, excluirCliente } = useDemo()
+  const navegar = useNavigate()
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const [modelo, setModelo] = useState('novidades')
   const c = clientes.find((x) => x.id === clienteId)
-  if (!c) return <Navigate to="/clientes" replace />
+  if (!c || c.removida) return <Navigate to="/clientes" replace />
 
   const primeiroNome = c.nome.split(' ')[0]
   const numero = c.whatsapp?.replace(/\D/g, '')
@@ -227,6 +228,16 @@ export function FichaCliente() {
           </ul>
         )}
       </section>
+
+      {ehProprietaria && (
+        <section className="cartao secao">
+          <h2>Excluir cliente</h2>
+          {podeApagarCliente(c.id, dados)
+            ? <p className="texto-suave pequeno">Esta cliente não tem compras nem encomendas: o cadastro é apagado de vez.</p>
+            : <p className="texto-suave pequeno">Esta cliente já comprou na loja. Os <strong>dados pessoais são apagados</strong> (nome, WhatsApp, aniversário e preferências) e as compras continuam no histórico como "cliente removida", como pede a LGPD.</p>}
+          <BotaoPerigo texto="Excluir cliente" aoConfirmar={() => { excluirCliente(c.id); navegar('/clientes') }} />
+        </section>
+      )}
     </div>
   )
 }

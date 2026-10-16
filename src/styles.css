@@ -502,3 +502,7 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
   .variacao-numeros { gap: 12px; width: 100%; justify-content: space-between; }
   .variacao-numeros span { align-items: flex-start; min-width: 0; }
 }
+
+/* Botão de excluir menor, para não competir com as ações principais */
+.excluir-discreto { display: flex; justify-content: flex-end; }
+.excluir-discreto .botao { padding: 6px 12px; font-size: 0.8rem; min-height: 0; }

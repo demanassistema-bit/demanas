@@ -15,11 +15,12 @@ export default function Produtos() {
   const [busca, setBusca] = useState('')
   const [tipo, setTipo] = useState('todos')
   const [empresa, setEmpresa] = useState('todas')
+  const [arquivados, setArquivados] = useState(false)
   const [novo, setNovo] = useState(false)
   const empresas = dados.config.empresas
 
   const lista = useMemo(() => dados.produtos
-    .filter((p) => p.ativo && (tipo === 'todos' || p.tipo === tipo) && (empresa === 'todas' || p.empresa_id === empresa))
+    .filter((p) => (arquivados ? !p.ativo : p.ativo) && (tipo === 'todos' || p.tipo === tipo) && (empresa === 'todas' || p.empresa_id === empresa))
     .map((p) => {
       const vs = linhas.filter((l) => l.produto_id === p.id)
       const precos = vs.map((v) => v.preco)
@@ -31,7 +32,8 @@ export default function Produtos() {
       }
     })
     .filter((p) => !busca.trim() || normalizar(`${p.nome} ${p.categoria} ${p.marca} ${p.variacoes.map((v) => `${v.nomeVariacao} ${v.sku} ${v.codigo_barras}`).join(' ')}`).includes(normalizar(busca)))
-    .sort((a, b) => a.nome.localeCompare(b.nome)), [dados.produtos, linhas, tipo, empresa, busca])
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [dados.produtos, linhas, tipo, empresa, busca, arquivados])
+  const qtdArquivados = dados.produtos.filter((p) => !p.ativo).length
 
   return (
     <div className="pagina">
@@ -54,6 +56,12 @@ export default function Produtos() {
           {Object.entries(empresas).map(([id, e]) => (
             <button key={id} className={`ficha ${empresa === id ? 'ativo' : ''}`} onClick={() => setEmpresa(id)}>{e.apelido}</button>
           ))}
+          {(qtdArquivados > 0 || arquivados) && (
+            <>
+              <span className="separador-fichas" aria-hidden="true" />
+              <button className={`ficha ${arquivados ? 'ativo' : ''}`} onClick={() => setArquivados(!arquivados)}>Arquivados ({qtdArquivados})</button>
+            </>
+          )}
         </div>
       </div>
 
