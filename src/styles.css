@@ -333,6 +333,14 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .totais .total { color: var(--texto); font-weight: 700; font-size: 1.1rem; padding: 4px 0; border-top: 1px solid var(--borda); margin-top: 4px; }
 .cancelar { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
 
+/* ---------------- Calculadora ---------------- */
+.resultado-calculadora { align-items: center; text-align: center; background: var(--creme); border-color: var(--creme); color: var(--creme-texto); }
+.resultado-calculadora .texto-suave, .resultado-calculadora .metrica-rotulo { color: var(--creme-texto); opacity: 0.85; }
+.preco-sugerido { font-size: 2.6rem; font-weight: 700; color: var(--primaria); line-height: 1.1; }
+[data-theme='escuro'] .preco-sugerido { color: var(--creme-texto); }
+.segmentado.quebra { flex-wrap: wrap; }
+.segmentado.quebra button { flex: 1 1 40%; }
+
 /* ---------------- Produtos ---------------- */
 .grade-produtos { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .produto { display: flex; align-items: center; gap: 14px; padding: 14px; text-decoration: none; color: inherit; }

@@ -11,6 +11,7 @@ import FichaProduto from './pages/FichaProduto'
 import Estoque from './pages/Estoque'
 import Clientes, { FichaCliente } from './pages/Clientes'
 import Relatorios from './pages/Relatorios'
+import Calculadora from './pages/Calculadora'
 import AreaFutura from './pages/AreaFutura'
 import Configuracoes from './pages/Configuracoes'
 
@@ -41,7 +42,8 @@ export default function App() {
           <Route path="clientes" element={<Clientes />} />
           <Route path="clientes/:clienteId" element={<FichaCliente />} />
           <Route path="relatorios" element={<Relatorios />} />
-          <Route path="financeiro" element={soProprietaria(<AreaFutura key="financeiro" area="financeiro" />)} />
+          <Route path="calculadora" element={soProprietaria(<Calculadora />)} />
+          <Route path="financeiro"element={soProprietaria(<AreaFutura key="financeiro" area="financeiro" />)} />
           <Route path="fiscal" element={soProprietaria(<AreaFutura key="fiscal" area="fiscal" />)} />
           <Route path="configuracoes" element={soProprietaria(<Configuracoes />)} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -36,5 +36,5 @@ export const CANAIS = {
 }
 
 // 59.934 → "59,9%"
-export const formatarPercentual = (valor) =>
-  `${Number(valor || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+export const formatarPercentual = (valor, casas = 1) =>
+  `${Number(valor || 0).toLocaleString('pt-BR', { maximumFractionDigits: casas })}%`
