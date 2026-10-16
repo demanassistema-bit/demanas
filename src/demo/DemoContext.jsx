@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { CONFIG_CALCULADORA, gerarDadosExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
+import { CONFIG_CALCULADORA, CONFIG_FISCAL, gerarDadosExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
 import { alocarPorValidade, calcularSaldos, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
 
@@ -16,7 +16,7 @@ function carregar() {
     const salvo = JSON.parse(localStorage.getItem(CHAVE))
     // quem já tinha dados guardados ganha os valores novos da calculadora sem perder o resto
     if (salvo?.versao === VERSAO_DADOS) {
-      const dados = { ...salvo, config: { ...CONFIG_CALCULADORA, ...salvo.config } }
+      const dados = { ...salvo, config: { ...CONFIG_CALCULADORA, ...CONFIG_FISCAL, ...salvo.config } }
       return dados.contasPagar ? dados : { ...dados, ...gerarFinanceiroExemplo(dados) }
     }
   } catch { /* sem armazenamento: começa do exemplo */ }

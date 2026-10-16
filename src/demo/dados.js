@@ -244,6 +244,7 @@ export function gerarDadosExemplo(agora = new Date()) {
       intimaNaoRetorna: true,
       taxas: { pix: 0, debito: 1.99, credito: 3.49, credito_parcelado: 4.99 },
       ...CONFIG_CALCULADORA,
+      ...CONFIG_FISCAL,
     },
   }
   return { ...resultado, ...gerarFinanceiroExemplo(resultado, agora) }
@@ -302,6 +303,17 @@ export function gerarFinanceiroExemplo(dados, agora = new Date()) {
     })
   }
   return { contasPagar, caixas }
+}
+
+// Dados fiscais começam EM BRANCO de propósito: quem preenche é a contadora (nada inventado)
+export const CONFIG_FISCAL = {
+  fiscal: {
+    empresa: { razao_social: '', cnpj: '', inscricao_estadual: '', regime: '', endereco: '', municipio: '', uf: '' },
+    provedor: '',
+    certificadoValidade: '',
+    emitir: 'sempre',
+    perfis: {}, // por categoria: { ncm, cest, origem, cfop, csosn, validado }
+  },
 }
 
 // Valores de EXEMPLO da calculadora de preço (as irmãs trocam pelos reais)

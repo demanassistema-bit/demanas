@@ -1,60 +1,54 @@
 import { useState } from 'react'
 import Icone from '../components/Icone'
-import { Aviso } from '../components/ui'
 import Calculadora from './Calculadora'
 import Caixa from './financeiro/Caixa'
 import AReceber from './financeiro/AReceber'
 import APagar from './financeiro/APagar'
 import Resultado from './financeiro/Resultado'
+import Notas from './fiscal/Notas'
+import Pacote from './fiscal/Pacote'
+import DadosFiscais from './fiscal/DadosFiscais'
+import { AlertasFiscais } from './fiscal/comum'
 
-const ABAS_FINANCEIRO = {
-  caixa: { nome: 'Caixa do dia', Tela: Caixa },
-  receber: { nome: 'A receber', Tela: AReceber },
-  pagar: { nome: 'A pagar', Tela: APagar },
-  resultado: { nome: 'Resultado do mês', Tela: Resultado },
-  calculadora: { nome: 'Calculadora', Tela: Calculadora },
-}
-
+// Áreas protegidas por código: cada uma com suas abas
 const AREAS = {
   financeiro: {
     titulo: 'Financeiro',
-    etapa: 6,
-    itens: [
-      'Taxas da maquininha conferidas contra o extrato',
-    ],
+    abas: {
+      caixa: { nome: 'Caixa do dia', Tela: Caixa },
+      receber: { nome: 'A receber', Tela: AReceber },
+      pagar: { nome: 'A pagar', Tela: APagar },
+      resultado: { nome: 'Resultado do mês', Tela: Resultado },
+      calculadora: { nome: 'Calculadora', Tela: Calculadora },
+    },
   },
   fiscal: {
     titulo: 'Nota fiscal',
-    etapa: 7,
-    itens: [
-      'NFC-e emitida sozinha a cada venda, sem a cliente esperar',
-      'Notas autorizadas, pendentes, rejeitadas e canceladas num só lugar',
-      'Motivo da rejeição em linguagem simples, com botão de reenviar',
-      'Aviso de certificado vencendo (60, 30 e 15 dias)',
-      'Pacote do mês para a contadora (todos os XMLs) em um clique',
-    ],
+    Topo: AlertasFiscais,
+    abas: {
+      notas: { nome: 'Notas', Tela: Notas },
+      pacote: { nome: 'Pacote da contadora', Tela: Pacote },
+      dados: { nome: 'Dados fiscais', Tela: DadosFiscais },
+    },
   },
 }
 
-// Mostra como será a porta de entrada das áreas protegidas por código
+const ler = (chave) => { try { return sessionStorage.getItem(chave) } catch { return null } }
+const gravar = (chave, valor) => { try { sessionStorage.setItem(chave, valor) } catch { /* sem armazenamento */ } }
+
+// Porta de entrada das áreas protegidas (na demonstração, qualquer código abre)
 export default function AreaFutura({ area }) {
   const info = AREAS[area]
+  const primeira = Object.keys(info.abas)[0]
   const [codigo, setCodigo] = useState('')
-  // na demonstração, o desbloqueio vale enquanto a aba estiver aberta
-  const [aberta, setAberta] = useState(() => {
-    try { return sessionStorage.getItem(`demanas-demo-${area}`) === '1' } catch { return false }
-  })
+  // o desbloqueio vale enquanto a aba do navegador estiver aberta
+  const [aberta, setAberta] = useState(() => ler(`demanas-demo-${area}`) === '1')
   const [aba, setAba] = useState(() => {
-    try { const a = sessionStorage.getItem('demanas-demo-aba-financeiro'); return ABAS_FINANCEIRO[a] ? a : 'caixa' } catch { return 'caixa' }
+    const salva = ler(`demanas-demo-aba-${area}`)
+    return info.abas[salva] ? salva : primeira
   })
-  const mudarAba = (a) => {
-    setAba(a)
-    try { sessionStorage.setItem('demanas-demo-aba-financeiro', a) } catch { /* sem armazenamento */ }
-  }
-  const abrir = () => {
-    setAberta(true)
-    try { sessionStorage.setItem(`demanas-demo-${area}`, '1') } catch { /* sem armazenamento */ }
-  }
+  const mudarAba = (a) => { setAba(a); gravar(`demanas-demo-aba-${area}`, a) }
+  const abrir = () => { setAberta(true); gravar(`demanas-demo-${area}`, '1') }
 
   if (!aberta) {
     return (
@@ -74,28 +68,18 @@ export default function AreaFutura({ area }) {
     )
   }
 
-  const emBreve = (
-    <>
-      <Aviso tom="ambar">Esta parte chega na <strong>Etapa {info.etapa}</strong>. Aqui está o que ela vai ter:</Aviso>
-      <ul className="cartao lista lista-marcada">
-        {info.itens.map((t) => <li key={t}><Icone nome="confirmar" tamanho={18} /> {t}</li>)}
-      </ul>
-    </>
-  )
-
+  const Tela = info.abas[aba].Tela
+  const Topo = info.Topo
   return (
     <div className="pagina pagina-estreita">
       <header className="pagina-topo"><h1>{info.titulo}</h1></header>
-      {area === 'financeiro' ? (
-        <>
-          <div className="abas" role="tablist">
-            {Object.entries(ABAS_FINANCEIRO).map(([chave, { nome }]) => (
-              <button key={chave} role="tab" aria-selected={aba === chave} className={`aba-topo ${aba === chave ? 'ativo' : ''}`} onClick={() => mudarAba(chave)}>{nome}</button>
-            ))}
-          </div>
-          {(() => { const Tela = ABAS_FINANCEIRO[aba].Tela; return <Tela /> })()}
-        </>
-      ) : emBreve}
+      {Topo && <Topo />}
+      <div className="abas" role="tablist">
+        {Object.entries(info.abas).map(([chave, { nome }]) => (
+          <button key={chave} role="tab" aria-selected={aba === chave} className={`aba-topo ${aba === chave ? 'ativo' : ''}`} onClick={() => mudarAba(chave)}>{nome}</button>
+        ))}
+      </div>
+      <Tela />
     </div>
   )
 }

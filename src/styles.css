@@ -344,6 +344,30 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .lista-fixos .valor { text-align: right; }
 .linha-destaque th, .linha-destaque td { color: var(--oliva); font-weight: 700; }
 .linha-total th, .linha-total td { font-weight: 700; border-top: 2px solid var(--borda); }
+/* ---------------- Nota fiscal ---------------- */
+.faixa-ambiente {
+  padding: 8px 14px; border-radius: 12px; text-align: center; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em;
+  background: repeating-linear-gradient(-45deg, var(--ambar-fundo) 0 12px, var(--cartao-2) 12px 24px); color: var(--ambar);
+}
+.aviso-neutro { background: var(--cartao-2); color: var(--texto-suave); }
+.cupom {
+  margin: 14px auto; max-width: 340px; padding: 16px 16px 20px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: #fffdf9; color: #2b1c10; border: 1px dashed #c9b49a; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 0.78rem; text-align: center;
+}
+.cupom.apagado { opacity: 0.55; }
+.cupom-marca { width: 100%; padding: 4px; background: #f8e7c6; color: #8a5a0c; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.05em; }
+.cupom-titulo { margin: 6px 0; font-size: 0.72rem; border-top: 1px dashed #c9b49a; border-bottom: 1px dashed #c9b49a; padding: 4px 0; width: 100%; }
+.cupom table { width: 100%; border-collapse: collapse; }
+.cupom td { padding: 2px 0; text-align: left; vertical-align: top; }
+.cupom td:last-child { text-align: right; white-space: nowrap; padding-left: 8px; }
+.cupom-total td { font-weight: 700; border-top: 1px dashed #c9b49a; padding-top: 4px; }
+.cupom small { color: #6b5440; }
+.cupom-qr { width: 96px; height: 96px; margin: 8px 0 4px; display: grid; place-items: center; border: 2px dashed #c9b49a; border-radius: 6px; color: #6b5440; font-size: 0.72rem; }
+.perfil-fiscal { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 14px; }
+.perfil-fiscal summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; }
+.perfil-fiscal summary::-webkit-details-marker { display: none; }
+.perfil-fiscal[open] summary { margin-bottom: 12px; }
+.perfil-fiscal .campo-check { margin-top: 10px; }
 .conta { flex-wrap: wrap; }
 .conta-direita { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .segmentado.quebra { flex-wrap: wrap; }

@@ -4,7 +4,26 @@ import {
   calcularSaldos, alocarPorValidade, totaisVenda, novoCustoMedio, descontoPrecisaAprovacao, taxaPagamento,
   precoPelaMargem, percentualFixo, arredondarPara90, lucroDaVenda, precoMinimo,
   recebiveisDaVenda, saldoEsperadoCaixa, resultadoDoMes,
+  faltasPerfilFiscal, situacaoCertificado,
 } from './regras.js'
+
+test('fiscal: perfil só passa com formato certo e validação da contadora', () => {
+  assert.deepEqual(faltasPerfilFiscal({}), ['NCM', 'Origem', 'CFOP', 'CSOSN ou CST', 'validação da contadora'])
+  const completo = { ncm: '1234.56.78', origem: '0', cfop: '5102', csosn: '102', validado: true }
+  assert.deepEqual(faltasPerfilFiscal(completo), [])
+  assert.deepEqual(faltasPerfilFiscal({ ...completo, cest: '123' }), ['CEST'])
+  assert.deepEqual(faltasPerfilFiscal({ ...completo, validado: false }), ['validação da contadora'])
+})
+
+test('fiscal: alertas do certificado em 60, 30 e 15 dias', () => {
+  const hoje = '2026-10-16'
+  assert.equal(situacaoCertificado('', hoje).tom, 'vinho')
+  assert.equal(situacaoCertificado('2026-10-10', hoje).texto, 'Certificado vencido há 6 dias')
+  assert.equal(situacaoCertificado('2026-10-26', hoje).tom, 'vinho')
+  assert.equal(situacaoCertificado('2026-11-10', hoje).tom, 'ambar')
+  assert.equal(situacaoCertificado('2026-12-10', hoje).tom, 'oliva')
+  assert.equal(situacaoCertificado('2027-06-01', hoje).tom, null)
+})
 
 const TAXAS = { pix: 0, debito: 2, credito: 3, credito_parcelado: 5 }
 

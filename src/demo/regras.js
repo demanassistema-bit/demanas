@@ -170,6 +170,39 @@ export function resultadoDoMes({ vendas, contas, taxas, imposto = 0 }) {
   return { faturamento, valorTaxas, valorImposto, custoPecas, lucroBruto, porCategoria, despesas, resultado: arred(lucroBruto - despesas) }
 }
 
+// ---------------- Nota fiscal ----------------
+// O sistema só confere o FORMATO. Os códigos de verdade quem define é a contadora.
+export const CAMPOS_PERFIL_FISCAL = {
+  ncm: { nome: 'NCM', ajuda: '8 números', valido: (v) => /^\d{8}$/.test(v) },
+  cest: { nome: 'CEST', ajuda: '7 números, quando houver', valido: (v) => !v || /^\d{7}$/.test(v), opcional: true },
+  origem: { nome: 'Origem', ajuda: '1 número (0 a 8)', valido: (v) => /^[0-8]$/.test(v) },
+  cfop: { nome: 'CFOP', ajuda: '4 números', valido: (v) => /^\d{4}$/.test(v) },
+  csosn: { nome: 'CSOSN ou CST', ajuda: '2 ou 3 números', valido: (v) => /^\d{2,3}$/.test(v) },
+}
+
+// Lista do que falta (ou está em formato errado) num perfil fiscal
+export function faltasPerfilFiscal(perfil = {}) {
+  const faltas = []
+  for (const [chave, campo] of Object.entries(CAMPOS_PERFIL_FISCAL)) {
+    const valor = String(perfil[chave] || '').replace(/\D/g, '')
+    if (!valor && campo.opcional) continue
+    if (!campo.valido(valor)) faltas.push(campo.nome)
+  }
+  if (!perfil.validado) faltas.push('validação da contadora')
+  return faltas
+}
+
+// Alerta do certificado A1: 60, 30 e 15 dias
+export function situacaoCertificado(validade, hoje) {
+  if (!validade) return { tom: 'vinho', texto: 'Validade do certificado não informada' }
+  const dias = Math.round((new Date(`${validade}T00:00:00`) - new Date(`${hoje}T00:00:00`)) / 86400000)
+  if (dias < 0) return { dias, tom: 'vinho', texto: `Certificado vencido há ${-dias} dias` }
+  if (dias <= 15) return { dias, tom: 'vinho', texto: `Certificado vence em ${dias} dias` }
+  if (dias <= 30) return { dias, tom: 'ambar', texto: `Certificado vence em ${dias} dias` }
+  if (dias <= 60) return { dias, tom: 'oliva', texto: `Certificado vence em ${dias} dias` }
+  return { dias, tom: null, texto: `Certificado válido por mais ${dias} dias` }
+}
+
 export const nomeVariacao = (v) =>
   [v.cor, v.tamanho, v.tonalidade, v.volume].filter(Boolean).join(' · ') || 'Única'
 

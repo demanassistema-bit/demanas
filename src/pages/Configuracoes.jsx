@@ -70,7 +70,7 @@ export default function Configuracoes() {
         <h2>Ainda nesta tela, na versão real</h2>
         <ul className="lista-simples">
           <li>Equipe: convidar pessoas e definir quem vê custo, financeiro e nota fiscal</li>
-          <li>Dados fiscais da empresa (CNPJ, regime, inscrição estadual)</li>
+          <li>Os dados fiscais da empresa já estão em Nota fiscal → Dados fiscais</li>
           <li>Política de trocas e mensagem do recibo</li>
         </ul>
       </section>
