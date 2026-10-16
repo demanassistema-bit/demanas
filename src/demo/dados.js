@@ -232,7 +232,7 @@ export function gerarDadosExemplo(agora = new Date()) {
 
   movimentacoes.sort((a, b) => a.data.localeCompare(b.data))
 
-  return {
+  const resultado = {
     versao: VERSAO_DADOS,
     seq,
     numeroVenda: numero,
@@ -246,6 +246,62 @@ export function gerarDadosExemplo(agora = new Date()) {
       ...CONFIG_CALCULADORA,
     },
   }
+  return { ...resultado, ...gerarFinanceiroExemplo(resultado, agora) }
+}
+
+// ---------------- Financeiro de EXEMPLO ----------------
+const CATEGORIA_DO_FIXO = { f1: 'aluguel', f2: 'contas_loja', f3: 'contas_loja', f4: 'contadora', f5: 'taxas_tarifas', f6: 'outros', f7: 'pro_labore' }
+
+export function gerarFinanceiroExemplo(dados, agora = new Date()) {
+  const hoje = new Date(agora)
+  const hojeISO = paraISO(hoje)
+  let n = 0
+  const contasPagar = []
+  const conta = (campos) => {
+    const vencida = campos.vencimento < hojeISO
+    contasPagar.push({ id: `cp${++n}`, fornecedor: '', observacao: '', pagoEm: vencida && campos.pago !== false ? campos.vencimento : null, ...campos })
+  }
+
+  // custos fixos: dia 10 de cada mês, dos 2 meses passados até o próximo
+  for (let m = -2; m <= 1; m++) {
+    const venc = paraISO(new Date(hoje.getFullYear(), hoje.getMonth() + m, 10))
+    for (const f of dados.config.custosFixos || CONFIG_CALCULADORA.custosFixos) {
+      if (!f.valor) continue
+      conta({ descricao: f.nome, categoria: CATEGORIA_DO_FIXO[f.id] || 'outros', valor: f.valor, vencimento: venc })
+    }
+  }
+  // fornecedores e outras despesas
+  conta({ descricao: 'Reposição de lingerie', fornecedor: 'Dália Íntima', categoria: 'fornecedores', valor: 1480, vencimento: paraISO(somarDias(hoje, -15)) })
+  conta({ descricao: 'Compra de maquiagem (1/2)', fornecedor: 'Ametista Cosméticos', categoria: 'fornecedores', valor: 640, vencimento: paraISO(somarDias(hoje, 5)) })
+  conta({ descricao: 'Compra de maquiagem (2/2)', fornecedor: 'Ametista Cosméticos', categoria: 'fornecedores', valor: 640, vencimento: paraISO(somarDias(hoje, 35)) })
+  conta({ descricao: 'Hidratantes e body splash', fornecedor: 'Flor de Sal', categoria: 'fornecedores', valor: 395, vencimento: paraISO(somarDias(hoje, -2)), pago: false })
+  conta({ descricao: 'Impulsionamento no Instagram', categoria: 'marketing', valor: 150, vencimento: paraISO(somarDias(hoje, 12)) })
+  contasPagar.sort((a, b) => a.vencimento.localeCompare(b.vencimento))
+  for (const c of contasPagar) delete c.pago
+
+  // caixa: os últimos 6 dias abertos, já fechados
+  const caixas = []
+  const dinheiroDoDia = (dia) => dados.vendas
+    .filter((v) => v.status === 'concluida' && paraISO(new Date(v.data)) === dia)
+    .reduce((s, v) => s + v.pagamentos.filter((p) => p.forma === 'dinheiro').reduce((t, p) => t + p.valor, 0), 0)
+  for (let d = 1, feitos = 0; feitos < 6 && d < 15; d++) {
+    const data = somarDias(hoje, -d)
+    if (data.getDay() === 0) continue
+    feitos++
+    const dia = paraISO(data)
+    const dinheiro = arred(dinheiroDoDia(dia))
+    // sangria de exemplo: leva ao banco o que entrou em dinheiro, deixando o troco
+    const lancamentos = dinheiro > 0 && feitos !== 2
+      ? [{ id: `l${dia}`, tipo: 'sangria', valor: dinheiro, motivo: 'Depósito no banco', hora: `${dia}T16:00:00` }]
+      : []
+    const esperado = arred(100 + dinheiro + lancamentos.reduce((s, l) => s - l.valor, 0))
+    caixas.push({
+      id: `cx${dia}`, dia, abertura: 100, abertoPor: 'Proprietária', lancamentos,
+      fechadoEm: `${dia}T18:30:00`, contado: feitos === 2 ? arred(esperado - 5) : esperado,
+      observacao: feitos === 2 ? 'Faltaram R$ 5,00: troco errado (exemplo)' : '',
+    })
+  }
+  return { contasPagar, caixas }
 }
 
 // Valores de EXEMPLO da calculadora de preço (as irmãs trocam pelos reais)

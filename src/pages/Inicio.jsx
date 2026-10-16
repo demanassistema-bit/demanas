@@ -38,6 +38,7 @@ export default function Inicio() {
     .sort((a, b) => a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)))
   const pendentes = dados.vendas.filter((v) => v.nota?.status === 'pendente')
   const ultimas = [...dados.vendas].reverse().slice(0, 5)
+  const contasProximas = (dados.contasPagar || []).filter((c) => !c.pagoEm && diasAte(c.vencimento) <= 7)
 
   return (
     <div className="pagina">
@@ -125,6 +126,28 @@ export default function Inicio() {
             </ul>
           )}
         </section>
+
+        {podeVerCustos && (
+          <section className="cartao bloco">
+            <header className="bloco-topo">
+              <h2>Contas a vencer</h2>
+              <Link to="/financeiro" className="botao-link">Financeiro</Link>
+            </header>
+            {contasProximas.length === 0 ? <Vazio icone="confirmar" titulo="Nada vencendo em 7 dias" /> : (
+              <ul className="lista">
+                {contasProximas.slice(0, 6).map((c) => {
+                  const dias = diasAte(c.vencimento)
+                  return (
+                    <li key={c.id} className="linha-lista">
+                      <span><strong>{c.descricao}</strong><small>{formatarMoeda(c.valor)}{c.fornecedor && ` · ${c.fornecedor}`}</small></span>
+                      <Selo tom={dias <= 0 ? 'vinho' : 'ambar'}>{dias < 0 ? `Vencida há ${-dias} d` : dias === 0 ? 'Vence hoje' : `Vence em ${dias} d`}</Selo>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        )}
 
         <section className="cartao bloco">
           <header className="bloco-topo">

@@ -344,6 +344,8 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .lista-fixos .valor { text-align: right; }
 .linha-destaque th, .linha-destaque td { color: var(--oliva); font-weight: 700; }
 .linha-total th, .linha-total td { font-weight: 700; border-top: 2px solid var(--borda); }
+.conta { flex-wrap: wrap; }
+.conta-direita { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .segmentado.quebra { flex-wrap: wrap; }
 .segmentado.quebra button { flex: 1 1 40%; }
 

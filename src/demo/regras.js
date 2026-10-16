@@ -106,6 +106,70 @@ export function lucroDaVenda({ preco, custo, taxa = 0, imposto = 0, fixo = 0 }) 
 // Menor preço sem prejuízo (lucro zero)
 export const precoMinimo = ({ custo, taxa = 0, imposto = 0, fixo = 0 }) => precoPelaMargem({ custo, margem: 0, taxa, imposto, fixo })
 
+// ---------------- Financeiro ----------------
+export const CATEGORIAS_DESPESA = {
+  aluguel: 'Aluguel',
+  contas_loja: 'Contas da loja',
+  fornecedores: 'Fornecedores (mercadoria)',
+  contadora: 'Contadora',
+  marketing: 'Marketing',
+  taxas_tarifas: 'Taxas e tarifas',
+  pro_labore: 'Pró-labore',
+  outros: 'Outros',
+}
+
+const somarDiasISO = (iso, dias) => {
+  const [a, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const data = new Date(a, m - 1, d + dias)
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`
+}
+
+// Quando e quanto cai na conta de cada pagamento com cartão.
+// Débito: no dia seguinte. Crédito: 30 dias por parcela. Pix e dinheiro entram na hora (não viram recebível).
+// A taxa sai de cada parcela; a última parcela absorve a sobra dos centavos.
+export function recebiveisDaVenda(venda, taxas, dia) {
+  const lista = []
+  venda.pagamentos.forEach((p, indice) => {
+    if (p.forma !== 'cartao_debito' && p.forma !== 'cartao_credito') return
+    const parcelas = p.forma === 'cartao_credito' ? Math.max(p.parcelas || 1, 1) : 1
+    const perc = p.forma === 'cartao_debito' ? taxas.debito : parcelas > 1 ? taxas.credito_parcelado : taxas.credito
+    const brutoParcela = arred(p.valor / parcelas)
+    for (let n = 1; n <= parcelas; n++) {
+      const bruto = n === parcelas ? arred(p.valor - brutoParcela * (parcelas - 1)) : brutoParcela
+      const taxa = arred((bruto * (perc || 0)) / 100)
+      lista.push({
+        id: `${venda.id}-${indice}-${n}`, venda_id: venda.id, numero: venda.numero, forma: p.forma,
+        parcela: n, parcelas, data: somarDiasISO(dia, p.forma === 'cartao_debito' ? 1 : 30 * n),
+        bruto, taxa, liquido: arred(bruto - taxa),
+      })
+    }
+  })
+  return lista
+}
+
+// Dinheiro que deveria estar na gaveta
+export function saldoEsperadoCaixa({ abertura, vendasDinheiro, lancamentos }) {
+  const mov = lancamentos.reduce((s, l) => s + (l.tipo === 'suprimento' ? l.valor : -l.valor), 0)
+  return arred(abertura + vendasDinheiro + mov)
+}
+
+// Resultado simples do mês (competência): vendas − taxas − imposto − custo das peças − despesas.
+// Compras de mercadoria não entram como despesa: o custo da peça já entra quando ela é vendida.
+export function resultadoDoMes({ vendas, contas, taxas, imposto = 0 }) {
+  const faturamento = arred(vendas.reduce((s, v) => s + v.total, 0))
+  const valorTaxas = arred(vendas.reduce((s, v) => s + v.pagamentos.reduce((t, p) => t + taxaPagamento(p, taxas), 0), 0))
+  const valorImposto = arred((faturamento * imposto) / 100)
+  const custoPecas = arred(vendas.reduce((s, v) => s + v.itens.reduce((c, i) => c + i.custo_unitario * i.quantidade, 0), 0))
+  const porCategoria = {}
+  for (const c of contas) {
+    if (c.categoria === 'fornecedores') continue
+    porCategoria[c.categoria] = arred((porCategoria[c.categoria] || 0) + c.valor)
+  }
+  const despesas = arred(Object.values(porCategoria).reduce((s, v) => s + v, 0))
+  const lucroBruto = arred(faturamento - valorTaxas - valorImposto - custoPecas)
+  return { faturamento, valorTaxas, valorImposto, custoPecas, lucroBruto, porCategoria, despesas, resultado: arred(lucroBruto - despesas) }
+}
+
 export const nomeVariacao = (v) =>
   [v.cor, v.tamanho, v.tonalidade, v.volume].filter(Boolean).join(' · ') || 'Única'
 

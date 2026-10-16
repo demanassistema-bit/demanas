@@ -3,7 +3,45 @@ import assert from 'node:assert/strict'
 import {
   calcularSaldos, alocarPorValidade, totaisVenda, novoCustoMedio, descontoPrecisaAprovacao, taxaPagamento,
   precoPelaMargem, percentualFixo, arredondarPara90, lucroDaVenda, precoMinimo,
+  recebiveisDaVenda, saldoEsperadoCaixa, resultadoDoMes,
 } from './regras.js'
+
+const TAXAS = { pix: 0, debito: 2, credito: 3, credito_parcelado: 5 }
+
+test('a receber: débito no dia seguinte, crédito parcelado a cada 30 dias, centavos fecham', () => {
+  const venda = { id: 'v1', numero: 7, pagamentos: [
+    { forma: 'pix', valor: 10 },
+    { forma: 'cartao_debito', valor: 50 },
+    { forma: 'cartao_credito', valor: 100, parcelas: 3 },
+  ] }
+  const r = recebiveisDaVenda(venda, TAXAS, '2026-01-31')
+  assert.equal(r.length, 4) // pix não vira recebível
+  assert.deepEqual(r[0], { id: 'v1-1-1', venda_id: 'v1', numero: 7, forma: 'cartao_debito', parcela: 1, parcelas: 1, data: '2026-02-01', bruto: 50, taxa: 1, liquido: 49 })
+  assert.deepEqual(r.slice(1).map((x) => x.data), ['2026-03-02', '2026-04-01', '2026-05-01'])
+  assert.deepEqual(r.slice(1).map((x) => x.bruto), [33.33, 33.33, 33.34])
+  assert.equal(r.slice(1).reduce((s, x) => s + x.bruto, 0).toFixed(2), '100.00')
+  assert.equal(r[1].taxa, 1.67) // 5% do parcelado
+})
+
+test('caixa: abertura + vendas em dinheiro + suprimento − sangria', () => {
+  assert.equal(saldoEsperadoCaixa({ abertura: 100, vendasDinheiro: 89.9, lancamentos: [
+    { tipo: 'suprimento', valor: 50 }, { tipo: 'sangria', valor: 120.5 },
+  ] }), 119.4)
+})
+
+test('resultado do mês: compra de mercadoria não conta duas vezes', () => {
+  const vendas = [{ total: 200, pagamentos: [{ forma: 'cartao_credito', valor: 200, parcelas: 1 }], itens: [{ custo_unitario: 40, quantidade: 2 }] }]
+  const contas = [
+    { categoria: 'aluguel', valor: 50 }, { categoria: 'fornecedores', valor: 500 }, { categoria: 'aluguel', valor: 10 },
+  ]
+  const r = resultadoDoMes({ vendas, contas, taxas: TAXAS, imposto: 5 })
+  assert.equal(r.valorTaxas, 6)
+  assert.equal(r.valorImposto, 10)
+  assert.equal(r.custoPecas, 80)
+  assert.equal(r.lucroBruto, 104)
+  assert.deepEqual(r.porCategoria, { aluguel: 60 })
+  assert.equal(r.resultado, 44)
+})
 
 test('calculadora: custos fixos viram percentual do faturamento e entram no preço', () => {
   const { total, percentual } = percentualFixo([{ valor: 1200 }, { valor: 300 }, { valor: '' }], 10000)

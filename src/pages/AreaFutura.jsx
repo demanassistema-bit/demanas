@@ -2,17 +2,25 @@ import { useState } from 'react'
 import Icone from '../components/Icone'
 import { Aviso } from '../components/ui'
 import Calculadora from './Calculadora'
+import Caixa from './financeiro/Caixa'
+import AReceber from './financeiro/AReceber'
+import APagar from './financeiro/APagar'
+import Resultado from './financeiro/Resultado'
+
+const ABAS_FINANCEIRO = {
+  caixa: { nome: 'Caixa do dia', Tela: Caixa },
+  receber: { nome: 'A receber', Tela: AReceber },
+  pagar: { nome: 'A pagar', Tela: APagar },
+  resultado: { nome: 'Resultado do mês', Tela: Resultado },
+  calculadora: { nome: 'Calculadora', Tela: Calculadora },
+}
 
 const AREAS = {
   financeiro: {
     titulo: 'Financeiro',
     etapa: 6,
     itens: [
-      'Calculadora de preço ligada aos custos fixos reais do mês (já disponível na outra aba)',
-      'Contas a receber (crediário e parcelas do cartão) e contas a pagar',
-      'Caixa do dia: abertura, sangria, suprimento e fechamento com conferência',
-      'Despesas por categoria, fluxo de caixa e resultado do mês',
-      'Taxas da maquininha conferidas contra o que caiu na conta',
+      'Taxas da maquininha conferidas contra o extrato',
     ],
   },
   fiscal: {
@@ -36,7 +44,13 @@ export default function AreaFutura({ area }) {
   const [aberta, setAberta] = useState(() => {
     try { return sessionStorage.getItem(`demanas-demo-${area}`) === '1' } catch { return false }
   })
-  const [aba, setAba] = useState('calculadora')
+  const [aba, setAba] = useState(() => {
+    try { const a = sessionStorage.getItem('demanas-demo-aba-financeiro'); return ABAS_FINANCEIRO[a] ? a : 'caixa' } catch { return 'caixa' }
+  })
+  const mudarAba = (a) => {
+    setAba(a)
+    try { sessionStorage.setItem('demanas-demo-aba-financeiro', a) } catch { /* sem armazenamento */ }
+  }
   const abrir = () => {
     setAberta(true)
     try { sessionStorage.setItem(`demanas-demo-${area}`, '1') } catch { /* sem armazenamento */ }
@@ -75,10 +89,11 @@ export default function AreaFutura({ area }) {
       {area === 'financeiro' ? (
         <>
           <div className="abas" role="tablist">
-            <button role="tab" aria-selected={aba === 'calculadora'} className={`aba-topo ${aba === 'calculadora' ? 'ativo' : ''}`} onClick={() => setAba('calculadora')}>Calculadora de preço</button>
-            <button role="tab" aria-selected={aba === 'em-breve'} className={`aba-topo ${aba === 'em-breve' ? 'ativo' : ''}`} onClick={() => setAba('em-breve')}>Em breve</button>
+            {Object.entries(ABAS_FINANCEIRO).map(([chave, { nome }]) => (
+              <button key={chave} role="tab" aria-selected={aba === chave} className={`aba-topo ${aba === chave ? 'ativo' : ''}`} onClick={() => mudarAba(chave)}>{nome}</button>
+            ))}
           </div>
-          {aba === 'calculadora' ? <Calculadora /> : emBreve}
+          {(() => { const Tela = ABAS_FINANCEIRO[aba].Tela; return <Tela /> })()}
         </>
       ) : emBreve}
     </div>

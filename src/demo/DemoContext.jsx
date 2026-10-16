@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { CONFIG_CALCULADORA, gerarDadosExemplo, VERSAO_DADOS } from './dados'
+import { CONFIG_CALCULADORA, gerarDadosExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
 import { alocarPorValidade, calcularSaldos, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
 
@@ -15,7 +15,10 @@ function carregar() {
   try {
     const salvo = JSON.parse(localStorage.getItem(CHAVE))
     // quem já tinha dados guardados ganha os valores novos da calculadora sem perder o resto
-    if (salvo?.versao === VERSAO_DADOS) return { ...salvo, config: { ...CONFIG_CALCULADORA, ...salvo.config } }
+    if (salvo?.versao === VERSAO_DADOS) {
+      const dados = { ...salvo, config: { ...CONFIG_CALCULADORA, ...salvo.config } }
+      return dados.contasPagar ? dados : { ...dados, ...gerarFinanceiroExemplo(dados) }
+    }
   } catch { /* sem armazenamento: começa do exemplo */ }
   return gerarDadosExemplo()
 }
@@ -230,6 +233,42 @@ export function DemoProvider({ children }) {
     return id
   }, [])
 
+  // ---------------- Financeiro ----------------
+  const abrirCaixa = useCallback((dia, abertura) => {
+    setDados((d) => (d.caixas.some((c) => c.dia === dia) ? d : {
+      ...d,
+      caixas: [...d.caixas, { id: `cx${dia}`, dia, abertura, abertoPor: usuario, lancamentos: [], fechadoEm: null, contado: null, observacao: '' }],
+    }))
+  }, [usuario])
+
+  const lancarNoCaixa = useCallback((dia, { tipo, valor, motivo }) => {
+    setDados((d) => ({
+      ...d,
+      caixas: d.caixas.map((c) => (c.dia === dia && !c.fechadoEm
+        ? { ...c, lancamentos: [...c.lancamentos, { id: `l${Date.now()}`, tipo, valor, motivo, hora: agoraISO(), usuario }] }
+        : c)),
+    }))
+  }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fecharCaixa = useCallback((dia, { contado, observacao }) => {
+    setDados((d) => ({
+      ...d,
+      caixas: d.caixas.map((c) => (c.dia === dia ? { ...c, contado, observacao, fechadoEm: agoraISO(), fechadoPor: usuario } : c)),
+    }))
+  }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const criarConta = useCallback((campos) => {
+    setDados((d) => ({
+      ...d,
+      contasPagar: [...d.contasPagar, { id: `cp${Date.now()}`, fornecedor: '', observacao: '', pagoEm: null, ...campos }]
+        .sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    }))
+  }, [])
+
+  const marcarPaga = useCallback((id, pagoEm) => {
+    setDados((d) => ({ ...d, contasPagar: d.contasPagar.map((c) => (c.id === id ? { ...c, pagoEm } : c)) }))
+  }, [])
+
   const atualizarConfig = useCallback((campos) => {
     setDados((d) => ({ ...d, config: { ...d.config, ...campos } }))
   }, [])
@@ -243,6 +282,7 @@ export function DemoProvider({ children }) {
         perfil, setPerfil, ehProprietaria, podeVerCustos: ehProprietaria, usuario,
         concluirVenda, cancelarVenda, reenviarNota, registrarEntrada, registrarAjuste,
         criarProduto, criarCliente, atualizarConfig, restaurar,
+        abrirCaixa, lancarNoCaixa, fecharCaixa, criarConta, marcarPaga,
       }}
     >
       {children}
