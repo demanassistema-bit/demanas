@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useDemo } from '../../demo/DemoContext'
 import { arred, formatarMoeda, formatarPercentual } from '../../lib/moeda'
 import { diaDe, formatarData, hojeISO, NOMES_MESES, paraISO, somarDias } from '../../lib/datas'
-import { CATEGORIAS_DESPESA, percentual, resultadoDoMes } from '../../demo/regras'
+import { CATEGORIAS_DESPESA, percentual, resultadoDoMes, taxasDe } from '../../demo/regras'
 import { useRecebiveis } from './AReceber'
 
 export default function Resultado() {
@@ -15,12 +15,16 @@ export default function Resultado() {
   })
   const [mes, setMes] = useState(meses[0].chave)
 
+  const vendasDoMes = useMemo(() => dados.vendas.filter((v) => v.status === 'concluida' && diaDe(v.data).startsWith(mes)), [dados.vendas, mes])
   const r = useMemo(() => resultadoDoMes({
-    vendas: dados.vendas.filter((v) => v.status === 'concluida' && diaDe(v.data).startsWith(mes)),
+    vendas: vendasDoMes,
     contas: dados.contasPagar.filter((c) => c.vencimento.startsWith(mes)),
-    taxas: dados.config.taxas,
+    taxas: (v) => taxasDe(dados.config, v.empresa_id),
     imposto: dados.config.calculadora?.imposto || 0,
-  }), [dados.vendas, dados.contasPagar, dados.config, mes])
+  }), [vendasDoMes, dados.contasPagar, dados.config, mes])
+  const porEmpresa = Object.entries(dados.config.empresas).map(([id, e]) => ({
+    id, apelido: e.apelido, valor: arred(vendasDoMes.filter((v) => v.empresa_id === id).reduce((s, v) => s + v.total, 0)),
+  }))
 
   // Fluxo de caixa das próximas 4 semanas: o que entra do cartão × o que sai de contas em aberto
   const semanas = useMemo(() => {
@@ -56,6 +60,9 @@ export default function Resultado() {
         <table className="tabela">
           <tbody>
             {linha('Vendas', r.faturamento, { sinal: '' })}
+            {porEmpresa.map((e) => (
+              <tr key={e.id} className="linha-sub"><th scope="row">{e.apelido}</th><td>{formatarMoeda(e.valor)}</td><td className="texto-suave">{formatarPercentual(percentual(e.valor, r.faturamento))}</td></tr>
+            ))}
             {linha('Taxas da maquininha', r.valorTaxas)}
             {r.valorImposto > 0 && linha('Imposto (estimado)', r.valorImposto)}
             {linha('Custo das peças vendidas', r.custoPecas)}
@@ -67,6 +74,7 @@ export default function Resultado() {
           </tbody>
         </table>
         <p className="texto-suave pequeno">
+          Resultado da loja inteira (os dois CNPJs juntos), porque o estoque e as despesas são compartilhados. A contadora fecha cada CNPJ separado.
           As despesas contam no mês do vencimento, pagas ou não. A compra de mercadoria não entra aqui: o custo de cada peça já entra quando ela é vendida.
           {r.valorImposto === 0 && ' O imposto está em 0%: preencha o percentual na Calculadora quando a contadora informar.'}
         </p>

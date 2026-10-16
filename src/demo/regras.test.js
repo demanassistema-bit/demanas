@@ -5,7 +5,27 @@ import {
   precoPelaMargem, percentualFixo, arredondarPara90, lucroDaVenda, precoMinimo,
   recebiveisDaVenda, saldoEsperadoCaixa, resultadoDoMes,
   faltasPerfilFiscal, situacaoCertificado,
+  dividirDesconto, taxasDe, emiteNota, empresaEmissora,
 } from './regras.js'
+
+test('dois CNPJs: desconto dividido na proporção e centavos fecham', () => {
+  assert.deepEqual(dividirDesconto([{ chave: 'day', subtotal: 100 }, { chave: 'fe', subtotal: 50 }], 10), { day: 6.67, fe: 3.33 })
+  assert.deepEqual(dividirDesconto([{ chave: 'day', subtotal: 80 }], 8), { day: 8 })
+  assert.deepEqual(dividirDesconto([{ chave: 'day', subtotal: 30 }, { chave: 'fe', subtotal: 70 }], 0), { day: 0, fe: 0 })
+})
+
+test('dois CNPJs: taxas da maquininha de cada um e só a ME emite nota', () => {
+  const config = { empresas: { day: { tipo: 'me', taxas: { debito: 1 } }, fe: { tipo: 'mei', taxas: { debito: 2 } } } }
+  assert.equal(taxasDe(config, 'fe').debito, 2)
+  assert.equal(emiteNota(config, 'day'), true)
+  assert.equal(emiteNota(config, 'fe'), false)
+  assert.equal(empresaEmissora(config), 'day')
+  const vendas = [
+    { total: 100, empresa_id: 'day', pagamentos: [{ forma: 'cartao_debito', valor: 100 }], itens: [] },
+    { total: 100, empresa_id: 'fe', pagamentos: [{ forma: 'cartao_debito', valor: 100 }], itens: [] },
+  ]
+  assert.equal(resultadoDoMes({ vendas, contas: [], taxas: (v) => taxasDe(config, v.empresa_id) }).valorTaxas, 3)
+})
 
 test('fiscal: perfil só passa com formato certo e validação da contadora', () => {
   assert.deepEqual(faltasPerfilFiscal({}), ['NCM', 'Origem', 'CFOP', 'CSOSN ou CST', 'validação da contadora'])

@@ -50,7 +50,7 @@ export default function Relatorios() {
       qtd: vendas.length, faturamento, custo, lucro: arred(faturamento - custo),
       ticket: vendas.length ? arred(faturamento / vendas.length) : 0,
       maisVendidos: [...porVariacao.entries()].sort((a, b) => b[1].qtd - a[1].qtd || b[1].valor - a[1].valor).slice(0, 10),
-      canais: somarPor('canal'), formas: somarPor('forma'), vendedoras: somarPor('vendedora'),
+      canais: somarPor('canal'), formas: somarPor('forma'), vendedoras: somarPor('vendedora'), empresas: somarPor('empresa_id'),
       parados, ultimaVenda,
     }
   }, [dados.vendas, linhas, periodo])
@@ -112,6 +112,7 @@ export default function Relatorios() {
       </section>
 
       <div className="grade-blocos">
+        {tabela('Por CNPJ', r.empresas, Object.fromEntries(Object.entries(dados.config.empresas).map(([id, e]) => [id, e.apelido])))}
         {tabela('Por canal', r.canais, CANAIS)}
         {tabela('Por forma de pagamento', r.formas, FORMAS_PAGAMENTO)}
         {tabela('Por quem vendeu', r.vendedoras)}

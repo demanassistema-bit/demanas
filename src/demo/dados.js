@@ -4,7 +4,7 @@ import { arred } from '../lib/moeda.js'
 import { paraISO, somarDias } from '../lib/datas.js'
 import { calcularSaldos, alocarPorValidade, totaisVenda } from './regras.js'
 
-export const VERSAO_DADOS = 2
+export const VERSAO_DADOS = 3
 
 // Gerador pseudoaleatório com semente: a demonstração sai sempre igual
 function sorteador(semente) {
@@ -63,6 +63,8 @@ export function gerarDadosExemplo(agora = new Date()) {
     const produto = {
       id: novoId('p'), nome: p.nome, tipo: p.tipo, categoria: p.categoria, marca: p.marca,
       controla_validade: p.tipo === 'cosmetico', ativo: true,
+      // EXEMPLO: lingerie no CNPJ Day, cosméticos no CNPJ Fê (as irmãs escolhem em cada produto)
+      empresa_id: p.tipo === 'lingerie' ? 'day' : 'fe',
     }
     produtos.push(produto)
     const combinacoes = p.tipo === 'lingerie'
@@ -142,8 +144,15 @@ export function gerarDadosExemplo(agora = new Date()) {
     if (diasAtras === 0) quantas = 3
     for (let n = 0; n < quantas; n++) {
       const { porVariacao, porLote } = calcularSaldos(movimentacoes)
-      const disponiveis = variacoes.filter((v) => (porVariacao.get(v.id) || 0) > 0)
-      if (!disponiveis.length) break
+      const comSaldo = variacoes.filter((v) => (porVariacao.get(v.id) || 0) > 0)
+      if (!comSaldo.length) break
+      // cada venda sai por um CNPJ (o dos produtos); cosméticos (Fê) vendem um pouco mais
+      let empresa_id = r() < 0.55 ? 'fe' : 'day'
+      let disponiveis = comSaldo.filter((v) => produtoDe.get(v.produto_id).empresa_id === empresa_id)
+      if (!disponiveis.length) {
+        empresa_id = empresa_id === 'fe' ? 'day' : 'fe'
+        disponiveis = comSaldo.filter((v) => produtoDe.get(v.produto_id).empresa_id === empresa_id)
+      }
 
       let data
       if (diasAtras === 0) {
@@ -157,9 +166,8 @@ export function gerarDadosExemplo(agora = new Date()) {
       // ticket médio da loja perto de R$ 50: quase sempre uma peça só, mais cosméticos
       const sorteioItens = r()
       const qtdItens = sorteioItens < 0.72 ? 1 : sorteioItens < 0.92 ? 2 : 3
-      const cosmeticos = disponiveis.filter((v) => produtoDe.get(v.produto_id).tipo === 'cosmetico')
       for (let k = 0; k < qtdItens; k++) {
-        const v = cosmeticos.length && r() < 0.6 ? r.um(cosmeticos) : r.um(disponiveis)
+        const v = r.um(disponiveis)
         if (itens.some((i) => i.variacao_id === v.id)) continue
         itens.push({ variacao_id: v.id, quantidade: 1, preco: v.preco })
       }
@@ -201,9 +209,10 @@ export function gerarDadosExemplo(agora = new Date()) {
       }
 
       vendas.push({
-        id, numero, data, cliente_id, canal, vendedora: r() < 0.55 ? 'Proprietária' : 'Vendedora',
+        id, numero, data, cliente_id, canal, empresa_id, vendedora: r() < 0.55 ? 'Proprietária' : 'Vendedora',
         itens: itensVenda, pagamentos, subtotal, desconto, total, status: 'concluida',
-        nota: { status: 'autorizada', ambiente: 'homologacao' },
+        // só o CNPJ Day (ME) emite nota; o MEI da Fê vende só para consumidor final, sem nota
+        nota: empresa_id === 'day' ? { status: 'autorizada', ambiente: 'homologacao' } : null,
       })
     }
   }
@@ -224,9 +233,9 @@ export function gerarDadosExemplo(agora = new Date()) {
     for (const m of movimentacoes.filter((x) => x.origem_id === cancelada.id)) {
       mov({ variacao_id: m.variacao_id, lote_id: m.lote_id, tipo: 'cancelamento_venda', quantidade: -m.quantidade, custo_unitario: m.custo_unitario, motivo: `Cancelamento da venda nº ${cancelada.numero}`, data: cancelada.data, origem_id: cancelada.id })
     }
-    cancelada.nota = { status: 'cancelada', ambiente: 'homologacao' }
+    if (cancelada.nota) cancelada.nota = { status: 'cancelada', ambiente: 'homologacao' }
   }
-  for (const v of vendas.slice(-5, -3)) {
+  for (const v of vendas.filter((x) => x.nota && x.status === 'concluida').slice(-5, -3)) {
     v.nota = { status: 'pendente', ambiente: 'homologacao', motivo: 'O produto está sem NCM no cadastro fiscal (exemplo). Corrija e reenvie.' }
   }
 
@@ -242,7 +251,7 @@ export function gerarDadosExemplo(agora = new Date()) {
       permitirEstoqueNegativo: false,
       aceitaCrediario: false,
       intimaNaoRetorna: true,
-      taxas: { pix: 0, debito: 1.99, credito: 3.49, credito_parcelado: 4.99 },
+      ...CONFIG_EMPRESAS,
       ...CONFIG_CALCULADORA,
       ...CONFIG_FISCAL,
     },
@@ -305,10 +314,19 @@ export function gerarFinanceiroExemplo(dados, agora = new Date()) {
   return { contasPagar, caixas }
 }
 
-// Dados fiscais começam EM BRANCO de propósito: quem preenche é a contadora (nada inventado)
+// Os dois CNPJs da loja (informado pela Bruna em 16/10/2026): Day é ME no Simples, Fê é MEI.
+// Cada um tem sua maquininha; as taxas abaixo são de EXEMPLO.
+export const CONFIG_EMPRESAS = {
+  empresas: {
+    day: { apelido: 'CNPJ Day', dona: 'Day', tipo: 'me', razao_social: '', cnpj: '', taxas: { pix: 0, debito: 1.99, credito: 3.49, credito_parcelado: 4.99 } },
+    fe: { apelido: 'CNPJ Fê', dona: 'Fê', tipo: 'mei', razao_social: '', cnpj: '', taxas: { pix: 0, debito: 1.89, credito: 3.29, credito_parcelado: 4.79 } },
+  },
+}
+
+// Dados fiscais do CNPJ que emite nota. Os códigos começam EM BRANCO: quem preenche é a contadora
 export const CONFIG_FISCAL = {
   fiscal: {
-    empresa: { razao_social: '', cnpj: '', inscricao_estadual: '', regime: '', endereco: '', municipio: '', uf: '' },
+    empresa: { inscricao_estadual: '', regime: 'simples', endereco: '', municipio: '', uf: '' },
     provedor: '',
     certificadoValidade: '',
     emitir: 'sempre',
@@ -328,7 +346,7 @@ export const CONFIG_CALCULADORA = {
     { id: 'f7', nome: 'Pró-labore das sócias', valor: 0 },
   ],
   calculadora: {
-    embalagem: 2, entrega: 0, entregaQuemPaga: 'loja', comEntrega: false,
+    empresa: 'day', embalagem: 2, entrega: 0, entregaQuemPaga: 'loja', comEntrega: false,
     margem: 20, imposto: 0, formaBase: 'credito', final90: true, faturamento: null,
   },
 }

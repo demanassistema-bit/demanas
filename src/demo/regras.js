@@ -157,7 +157,9 @@ export function saldoEsperadoCaixa({ abertura, vendasDinheiro, lancamentos }) {
 // Compras de mercadoria não entram como despesa: o custo da peça já entra quando ela é vendida.
 export function resultadoDoMes({ vendas, contas, taxas, imposto = 0 }) {
   const faturamento = arred(vendas.reduce((s, v) => s + v.total, 0))
-  const valorTaxas = arred(vendas.reduce((s, v) => s + v.pagamentos.reduce((t, p) => t + taxaPagamento(p, taxas), 0), 0))
+  // taxas pode ser fixa ou uma função (venda → taxas da maquininha daquele CNPJ)
+  const taxasDaVenda = (v) => (typeof taxas === 'function' ? taxas(v) : taxas)
+  const valorTaxas = arred(vendas.reduce((s, v) => s + v.pagamentos.reduce((t, p) => t + taxaPagamento(p, taxasDaVenda(v)), 0), 0))
   const valorImposto = arred((faturamento * imposto) / 100)
   const custoPecas = arred(vendas.reduce((s, v) => s + v.itens.reduce((c, i) => c + i.custo_unitario * i.quantidade, 0), 0))
   const porCategoria = {}
@@ -168,6 +170,25 @@ export function resultadoDoMes({ vendas, contas, taxas, imposto = 0 }) {
   const despesas = arred(Object.values(porCategoria).reduce((s, v) => s + v, 0))
   const lucroBruto = arred(faturamento - valorTaxas - valorImposto - custoPecas)
   return { faturamento, valorTaxas, valorImposto, custoPecas, lucroBruto, porCategoria, despesas, resultado: arred(lucroBruto - despesas) }
+}
+
+// ---------------- Dois CNPJs (Day e Fê) ----------------
+// Cada produto pertence a um CNPJ; cada CNPJ tem sua maquininha (suas taxas). Só a ME emite nota.
+export const taxasDe = (config, empresaId) => config.empresas?.[empresaId]?.taxas || {}
+export const emiteNota = (config, empresaId) => config.empresas?.[empresaId]?.tipo === 'me'
+export const empresaEmissora = (config) => Object.keys(config.empresas || {}).find((id) => emiteNota(config, id)) || null
+
+// Desconto da venda dividido entre os CNPJs na proporção do subtotal de cada um
+export function dividirDesconto(partes, desconto) {
+  const total = partes.reduce((s, p) => s + p.subtotal, 0)
+  const resultado = {}
+  let usado = 0
+  partes.forEach((p, i) => {
+    const valor = i === partes.length - 1 ? arred(desconto - usado) : arred(total > 0 ? (desconto * p.subtotal) / total : 0)
+    resultado[p.chave] = valor
+    usado = arred(usado + valor)
+  })
+  return resultado
 }
 
 // ---------------- Nota fiscal ----------------

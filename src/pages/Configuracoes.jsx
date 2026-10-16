@@ -19,13 +19,16 @@ function Interruptor({ ligado, aoMudar, children, decisao }) {
 export default function Configuracoes() {
   const { dados, atualizarConfig, restaurar } = useDemo()
   const c = dados.config
-  const [taxas, setTaxas] = useState(() => Object.fromEntries(Object.entries(c.taxas).map(([k, v]) => [k, paraCampoMoeda(v)])))
+  // textos digitados das taxas, por CNPJ: { day: { debito: '1,99' }, fe: {...} }
+  const [taxas, setTaxas] = useState(() => Object.fromEntries(Object.entries(c.empresas).map(([id, e]) => [id,
+    Object.fromEntries(Object.entries(e.taxas).map(([k, v]) => [k, paraCampoMoeda(v)]))])))
   const [restaurado, setRestaurado] = useState(false)
 
-  const salvarTaxa = (chave, texto) => {
-    setTaxas({ ...taxas, [chave]: texto })
+  const mudarEmpresa = (id, campos) => atualizarConfig({ empresas: { ...c.empresas, [id]: { ...c.empresas[id], ...campos } } })
+  const salvarTaxa = (id, chave, texto) => {
+    setTaxas({ ...taxas, [id]: { ...taxas[id], [chave]: texto } })
     const n = lerMoeda(texto)
-    if (n != null && !Number.isNaN(n)) atualizarConfig({ taxas: { ...c.taxas, [chave]: n } })
+    if (n != null && !Number.isNaN(n)) mudarEmpresa(id, { taxas: { ...c.empresas[id].taxas, [chave]: n } })
   }
 
   return (
@@ -56,15 +59,24 @@ export default function Configuracoes() {
         </Interruptor>
       </section>
 
-      <section className="cartao secao">
-        <h2>Taxas da maquininha</h2>
-        <p className="texto-suave pequeno">Usadas para calcular o lucro de verdade de cada venda.</p>
-        <div className="grade-campos">
-          {[['pix', 'Pix'], ['debito', 'Débito'], ['credito', 'Crédito à vista'], ['credito_parcelado', 'Crédito parcelado']].map(([k, n]) => (
-            <label key={k} className="campo"><span>{n} (%)</span><input inputMode="decimal" value={taxas[k]} onChange={(e) => salvarTaxa(k, e.target.value)} /></label>
-          ))}
-        </div>
-      </section>
+      {Object.entries(c.empresas).map(([id, e]) => (
+        <section key={id} className="cartao secao">
+          <header className="bloco-topo">
+            <h2>{e.apelido}</h2>
+            <span className="selos"><span className="selo selo-neutro">{e.tipo === 'me' ? 'ME · emite nota' : 'MEI · sem nota'}</span></span>
+          </header>
+          <label className="campo campo-estreito">
+            <span>Nome que aparece no sistema</span>
+            <input value={e.apelido} onChange={(ev) => mudarEmpresa(id, { apelido: ev.target.value })} />
+          </label>
+          <p className="texto-suave pequeno">Taxas da maquininha da {e.dona}, usadas para calcular o lucro de verdade de cada venda.</p>
+          <div className="grade-campos">
+            {[['pix', 'Pix'], ['debito', 'Débito'], ['credito', 'Crédito à vista'], ['credito_parcelado', 'Crédito parcelado']].map(([k, n]) => (
+              <label key={k} className="campo"><span>{n} (%)</span><input inputMode="decimal" value={taxas[id]?.[k] ?? ''} onChange={(ev) => salvarTaxa(id, k, ev.target.value)} /></label>
+            ))}
+          </div>
+        </section>
+      ))}
 
       <section className="cartao secao">
         <h2>Ainda nesta tela, na versão real</h2>

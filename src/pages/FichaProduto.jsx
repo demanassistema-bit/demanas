@@ -2,7 +2,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { formatarMoeda, formatarPercentual } from '../lib/moeda'
 import { formatarData, formatarDataHora } from '../lib/datas'
-import { percentual, TIPOS_MOVIMENTO } from '../demo/regras'
+import { emiteNota, percentual, TIPOS_MOVIMENTO } from '../demo/regras'
 import Icone from '../components/Icone'
 import { Selo, seloValidade } from '../components/ui'
 
@@ -10,7 +10,7 @@ const NOMES_TIPO = { lingerie: 'Lingerie', cosmetico: 'Cosmético', outro: 'Outr
 
 export default function FichaProduto() {
   const { produtoId } = useParams()
-  const { dados, linhas, lotesComSaldo, produtoPorId, podeVerCustos } = useDemo()
+  const { dados, linhas, lotesComSaldo, produtoPorId, podeVerCustos, ehProprietaria, atualizarProduto } = useDemo()
   const produto = produtoPorId.get(produtoId)
   if (!produto) return <Navigate to="/produtos" replace />
 
@@ -31,6 +31,19 @@ export default function FichaProduto() {
         </div>
         <Link to={`/estoque?aba=entrada`} className="botao botao-secundario"><Icone nome="estoque" /> Entrada de estoque</Link>
       </header>
+
+      <section className="cartao secao">
+        <header className="bloco-topo">
+          <h2>Vende por qual CNPJ</h2>
+          <span className="texto-suave pequeno">{emiteNota(dados.config, produto.empresa_id) ? 'sai com nota fiscal' : 'MEI: sai sem nota'}</span>
+        </header>
+        <div className="segmentado">
+          {Object.entries(dados.config.empresas).map(([id, e]) => (
+            <button key={id} disabled={!ehProprietaria} className={produto.empresa_id === id ? 'ativo' : ''} onClick={() => atualizarProduto(produto.id, { empresa_id: id })}>{e.apelido}</button>
+          ))}
+        </div>
+        <p className="texto-suave pequeno">O estoque é um só. O CNPJ define em qual maquininha a peça é cobrada e se a venda sai com nota.</p>
+      </section>
 
       <section className="cartao secao">
         <header className="bloco-topo">

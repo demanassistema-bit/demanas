@@ -66,7 +66,7 @@ export default function Vendas() {
                 <span>
                   <strong>nº {v.numero} · {formatarMoeda(v.total)}</strong>
                   <small>
-                    {formatarDataHora(v.data)} · {CANAIS[v.canal]} · {v.pagamentos.map((p) => FORMAS_PAGAMENTO[p.forma]).join(' + ')}
+                    {formatarDataHora(v.data)} · {dados.config.empresas[v.empresa_id]?.apelido} · {CANAIS[v.canal]} · {v.pagamentos.map((p) => FORMAS_PAGAMENTO[p.forma]).join(' + ')}
                     {v.cliente_id ? ` · ${clientePorId.get(v.cliente_id)?.nome}` : ''}
                   </small>
                 </span>
@@ -83,7 +83,7 @@ export default function Vendas() {
       {vendaAberta && (
         <Modal titulo={`Venda nº ${vendaAberta.numero}`} aoFechar={() => { mudar({ venda: null }); setMotivo('') }}>
           <p className="texto-suave">
-            {formatarDataHora(vendaAberta.data)} · {CANAIS[vendaAberta.canal]} · vendida por {vendaAberta.vendedora}
+            {formatarDataHora(vendaAberta.data)} · {dados.config.empresas[vendaAberta.empresa_id]?.apelido} · {CANAIS[vendaAberta.canal]} · vendida por {vendaAberta.vendedora}
             {vendaAberta.cliente_id && <> · {clientePorId.get(vendaAberta.cliente_id)?.nome}</>}
           </p>
           <ul className="lista lista-compacta">
@@ -106,6 +106,17 @@ export default function Vendas() {
             ))}
           </dl>
 
+          {vendaAberta.grupo && (
+            <p className="texto-suave pequeno">
+              Esta compra teve peças dos dois CNPJs. A outra parte é a venda nº {dados.vendas.filter((x) => x.grupo === vendaAberta.grupo && x.id !== vendaAberta.id).map((x) => x.numero).join(', ')}.
+            </p>
+          )}
+          {!vendaAberta.nota ? (
+            <div className="cartao secao secao-interna">
+              <h3><Icone nome="fiscal" tamanho={18} /> Sem nota fiscal</h3>
+              <p className="texto-suave pequeno">Venda do {dados.config.empresas[vendaAberta.empresa_id]?.apelido} (MEI), que vende só para consumidor final e não precisa emitir nota.</p>
+            </div>
+          ) : (
           <div className="cartao secao secao-interna">
             <h3><Icone nome="fiscal" tamanho={18} /> Nota fiscal <Selo tom="ambar">teste</Selo></h3>
             {vendaAberta.nota?.status === 'autorizada' && <p>Autorizada.</p>}
@@ -118,6 +129,7 @@ export default function Vendas() {
               </>
             )}
           </div>
+          )}
 
           {vendaAberta.status === 'cancelada' ? (
             <Aviso tom="vinho">Cancelada: {vendaAberta.motivo_cancelamento}. O estoque voltou por estorno, e a venda continua registrada.</Aviso>

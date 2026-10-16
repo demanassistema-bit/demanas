@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { diasDesde } from '../lib/datas'
-import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem } from '../demo/regras'
+import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem, taxasDe } from '../demo/regras'
 import Icone from '../components/Icone'
 import { Aviso, SeletorVariacao } from '../components/ui'
 
@@ -24,7 +24,12 @@ export default function Calculadora() {
   const { dados, linhas, atualizarConfig } = useDemo()
   const config = dados.config
   const calc = config.calculadora
-  const taxas = config.taxas
+  // cada CNPJ tem sua maquininha: a calculadora usa as taxas do CNPJ escolhido
+  const empresaCalc = config.empresas[calc.empresa] ? calc.empresa : 'day'
+  const taxas = taxasDe(config, empresaCalc)
+  const salvarTaxa = (chave, n) => atualizarConfig({
+    empresas: { ...config.empresas, [empresaCalc]: { ...config.empresas[empresaCalc], taxas: { ...taxas, [chave]: n } } },
+  })
 
   // Faturamento médio dos últimos 3 meses, para sugerir
   const faturamentoMedio = useMemo(() => arred(dados.vendas
@@ -40,7 +45,6 @@ export default function Calculadora() {
     imposto: campo(calc.imposto),
     faturamento: campo(calc.faturamento ?? faturamentoMedio),
     teste: '',
-    ...Object.fromEntries(FORMAS.map((f) => [`taxa_${f.chave}`, campo(taxas[f.chave])])),
     ...Object.fromEntries(config.custosFixos.map((c) => [`fixo_${c.id}`, campo(c.valor)])),
   }))
   const mudar = (chave, texto, guardar) => {
@@ -91,7 +95,11 @@ export default function Calculadora() {
 
   function escolherProduto(l) {
     setProdutoId(l?.id || null)
-    if (l) setTextos((t) => ({ ...t, custo: paraCampoMoeda(l.custo), teste: '' }))
+    if (l) {
+      setTextos((t) => ({ ...t, custo: paraCampoMoeda(l.custo), teste: '' }))
+      // o produto já diz por qual CNPJ (e maquininha) ele é vendido
+      if (l.produto.empresa_id && l.produto.empresa_id !== empresaCalc) marcarCalc({ empresa: l.produto.empresa_id })
+    }
   }
 
   return (
@@ -153,11 +161,16 @@ export default function Calculadora() {
 
       <section className="cartao secao">
         <h2>4. Taxas do cartão e do banco</h2>
+        <div className="segmentado">
+          {Object.entries(config.empresas).map(([id, e]) => (
+            <button key={id} className={empresaCalc === id ? 'ativo' : ''} onClick={() => marcarCalc({ empresa: id })}>Maquininha {e.apelido}</button>
+          ))}
+        </div>
         <div className="grade-campos">
           {FORMAS.map((f) => (
             <label key={f.chave} className="campo">
               <span>{f.nome} (%)</span>
-              <input inputMode="decimal" value={textos[`taxa_${f.chave}`]} onChange={(e) => mudar(`taxa_${f.chave}`, e.target.value, (n) => atualizarConfig({ taxas: { ...taxas, [f.chave]: n } }))} />
+              <input inputMode="decimal" value={textos[`taxa_${empresaCalc}_${f.chave}`] ?? campo(taxas[f.chave])} onChange={(e) => mudar(`taxa_${empresaCalc}_${f.chave}`, e.target.value, (n) => salvarTaxa(f.chave, n))} />
             </label>
           ))}
         </div>

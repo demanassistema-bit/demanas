@@ -14,10 +14,12 @@ export default function Produtos() {
   const { dados, linhas, ehProprietaria } = useDemo()
   const [busca, setBusca] = useState('')
   const [tipo, setTipo] = useState('todos')
+  const [empresa, setEmpresa] = useState('todas')
   const [novo, setNovo] = useState(false)
+  const empresas = dados.config.empresas
 
   const lista = useMemo(() => dados.produtos
-    .filter((p) => p.ativo && (tipo === 'todos' || p.tipo === tipo))
+    .filter((p) => p.ativo && (tipo === 'todos' || p.tipo === tipo) && (empresa === 'todas' || p.empresa_id === empresa))
     .map((p) => {
       const vs = linhas.filter((l) => l.produto_id === p.id)
       const precos = vs.map((v) => v.preco)
@@ -29,7 +31,7 @@ export default function Produtos() {
       }
     })
     .filter((p) => !busca.trim() || normalizar(`${p.nome} ${p.categoria} ${p.marca} ${p.variacoes.map((v) => `${v.nomeVariacao} ${v.sku} ${v.codigo_barras}`).join(' ')}`).includes(normalizar(busca)))
-    .sort((a, b) => a.nome.localeCompare(b.nome)), [dados.produtos, linhas, tipo, busca])
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [dados.produtos, linhas, tipo, empresa, busca])
 
   return (
     <div className="pagina">
@@ -47,6 +49,11 @@ export default function Produtos() {
           {Object.entries(TIPOS).map(([chave, nome]) => (
             <button key={chave} className={`ficha ${tipo === chave ? 'ativo' : ''}`} onClick={() => setTipo(chave)}>{nome}</button>
           ))}
+          <span className="separador-fichas" aria-hidden="true" />
+          <button className={`ficha ${empresa === 'todas' ? 'ativo' : ''}`} onClick={() => setEmpresa('todas')}>Os dois CNPJs</button>
+          {Object.entries(empresas).map(([id, e]) => (
+            <button key={id} className={`ficha ${empresa === id ? 'ativo' : ''}`} onClick={() => setEmpresa(id)}>{e.apelido}</button>
+          ))}
         </div>
       </div>
 
@@ -59,7 +66,7 @@ export default function Produtos() {
               <span className={`produto-marca tipo-${p.tipo}`}>{p.nome.charAt(0)}</span>
               <div className="produto-info">
                 <strong>{p.nome}</strong>
-                <small>{p.categoria} · {p.marca}</small>
+                <small>{p.categoria} · {p.marca} · <span className="texto-cnpj">{empresas[p.empresa_id]?.apelido || 'sem CNPJ'}</span></small>
                 <small>{p.variacoes.length} {p.variacoes.length === 1 ? 'variação' : 'variações'} · {p.estoque} em estoque</small>
               </div>
               <div className="produto-direita">
@@ -80,7 +87,7 @@ function NovoProduto({ aoFechar }) {
   const { dados, criarProduto } = useDemo()
   const navegar = useNavigate()
   const [f, setF] = useState({
-    nome: '', tipo: 'lingerie', categoria: '', marca: '', preco: '', custo: '', minimo: '1',
+    nome: '', tipo: 'lingerie', categoria: '', marca: '', empresa_id: 'day', preco: '', custo: '', minimo: '1',
     cores: '', tamanhos: 'P, M, G', tonalidades: '', volume: '', controla_validade: true,
   })
   const [erro, setErro] = useState('')
@@ -100,7 +107,7 @@ function NovoProduto({ aoFechar }) {
     if (!f.nome.trim()) return setErro('Dê um nome ao produto.')
     if (!preco || Number.isNaN(preco)) return setErro('Informe o preço de venda.')
     const id = criarProduto({
-      nome: f.nome.trim(), tipo: f.tipo, categoria: f.categoria.trim() || 'Sem categoria', marca: f.marca.trim() || 'Sem marca',
+      nome: f.nome.trim(), tipo: f.tipo, categoria: f.categoria.trim() || 'Sem categoria', marca: f.marca.trim() || 'Sem marca', empresa_id: f.empresa_id,
       preco, custo, estoque_minimo: Number(f.minimo) || 0, cores, tamanhos, tonalidades,
       volume: f.volume.trim(), controla_validade: f.tipo === 'cosmetico' && f.controla_validade,
     })
@@ -118,6 +125,14 @@ function NovoProduto({ aoFechar }) {
           <button type="button" className={f.tipo === 'lingerie' ? 'ativo' : ''} onClick={() => mudar({ tipo: 'lingerie' })}>Lingerie</button>
           <button type="button" className={f.tipo === 'cosmetico' ? 'ativo' : ''} onClick={() => mudar({ tipo: 'cosmetico' })}>Cosmético</button>
           <button type="button" className={f.tipo === 'outro' ? 'ativo' : ''} onClick={() => mudar({ tipo: 'outro' })}>Outro</button>
+        </div>
+        <div className="campo">
+          <span>Vende por qual CNPJ</span>
+          <div className="segmentado">
+            {Object.entries(dados.config.empresas).map(([id, e]) => (
+              <button type="button" key={id} className={f.empresa_id === id ? 'ativo' : ''} onClick={() => mudar({ empresa_id: id })}>{e.apelido}</button>
+            ))}
+          </div>
         </div>
         <label className="campo"><span>Nome do produto</span><input value={f.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder={f.tipo === 'lingerie' ? 'Ex.: Sutiã renda Aurora' : 'Ex.: Batom matte Veludo'} autoFocus /></label>
         <div className="grade-campos">

@@ -343,6 +343,8 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .lista-fixos li { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 8px; align-items: center; }
 .lista-fixos .valor { text-align: right; }
 .linha-destaque th, .linha-destaque td { color: var(--oliva); font-weight: 700; }
+.linha-sub th { padding-left: 18px; font-size: 0.85rem; color: var(--texto-suave); font-weight: 400; }
+.linha-sub td { font-size: 0.85rem; color: var(--texto-suave); }
 .linha-total th, .linha-total td { font-weight: 700; border-top: 2px solid var(--borda); }
 /* ---------------- Nota fiscal ---------------- */
 .faixa-ambiente {
@@ -368,6 +370,10 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .perfil-fiscal summary::-webkit-details-marker { display: none; }
 .perfil-fiscal[open] summary { margin-bottom: 12px; }
 .perfil-fiscal .campo-check { margin-top: 10px; }
+.texto-cnpj { color: var(--primaria); font-weight: 600; }
+.separador-fichas { width: 1px; align-self: stretch; background: var(--borda); margin: 0 4px; }
+.segmentado button:disabled { cursor: default; }
+.partes-concluidas { width: 100%; text-align: left; }
 .conta { flex-wrap: wrap; }
 .conta-direita { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .segmentado.quebra { flex-wrap: wrap; }

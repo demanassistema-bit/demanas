@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDemo } from '../../demo/DemoContext'
 import { arred, formatarMoeda, FORMAS_PAGAMENTO } from '../../lib/moeda'
 import { formatarDataHora } from '../../lib/datas'
-import { nomeVariacao } from '../../demo/regras'
+import { empresaEmissora, nomeVariacao } from '../../demo/regras'
 import Modal from '../../components/Modal'
 import Icone from '../../components/Icone'
 import { Aviso, Metrica, Vazio } from '../../components/ui'
@@ -12,6 +12,7 @@ import { numeroNota, SeloNota, useNotas } from './comum'
 const FILTROS = { todas: 'Todas', autorizada: 'Autorizadas', pendente: 'Pendentes', cancelada: 'Canceladas' }
 
 export default function Notas() {
+  const { dados } = useDemo()
   const notas = useNotas()
   const [filtro, setFiltro] = useState('todas')
   const [aberta, setAberta] = useState(null)
@@ -46,7 +47,7 @@ export default function Notas() {
           ))}
         </ul>
       )}
-      <p className="texto-suave pequeno">A nota sai sozinha a cada venda, em segundo plano. Para cancelar uma nota, cancele a venda em <Link to="/vendas">Vendas</Link>, dentro do prazo do estado.</p>
+      <p className="texto-suave pequeno">Só as vendas do {dados.config.empresas[empresaEmissora(dados.config)]?.apelido} (ME) têm nota. As do MEI vendem só para consumidor final e saem sem nota. A nota sai sozinha a cada venda, em segundo plano. Para cancelar uma nota, cancele a venda em <Link to="/vendas">Vendas</Link>, dentro do prazo do estado.</p>
 
       {notaAberta && <Cupom nota={notaAberta} aoFechar={() => setAberta(null)} />}
     </div>
@@ -56,8 +57,9 @@ export default function Notas() {
 // Cupom de TESTE no formato da NFC-e (sem valor fiscal)
 function Cupom({ nota, aoFechar }) {
   const { dados, variacaoPorId, produtoPorId, clientePorId, reenviarNota } = useDemo()
-  const empresa = dados.config.fiscal.empresa
   const v = nota.venda
+  // dados do CNPJ que emitiu (só a ME emite) + endereço e inscrição da área fiscal
+  const empresa = { ...dados.config.fiscal.empresa, ...dados.config.empresas[v.empresa_id] }
   const cliente = clientePorId.get(v.cliente_id)
   const texto = `deMana's · NFC-e ${numeroNota(nota.numero)} (teste) · ${formatarMoeda(v.total)} · ${formatarDataHora(v.data)}`
 

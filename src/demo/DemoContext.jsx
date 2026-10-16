@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { CONFIG_CALCULADORA, CONFIG_FISCAL, gerarDadosExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
-import { alocarPorValidade, calcularSaldos, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
+import { CONFIG_CALCULADORA, CONFIG_EMPRESAS, CONFIG_FISCAL, gerarDadosExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
+import { alocarPorValidade, calcularSaldos, emiteNota, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
 
 /*
@@ -16,7 +16,7 @@ function carregar() {
     const salvo = JSON.parse(localStorage.getItem(CHAVE))
     // quem já tinha dados guardados ganha os valores novos da calculadora sem perder o resto
     if (salvo?.versao === VERSAO_DADOS) {
-      const dados = { ...salvo, config: { ...CONFIG_CALCULADORA, ...CONFIG_FISCAL, ...salvo.config } }
+      const dados = { ...salvo, config: { ...CONFIG_EMPRESAS, ...CONFIG_CALCULADORA, ...CONFIG_FISCAL, ...salvo.config } }
       return dados.contasPagar ? dados : { ...dados, ...gerarFinanceiroExemplo(dados) }
     }
   } catch { /* sem armazenamento: começa do exemplo */ }
@@ -83,10 +83,12 @@ export function DemoProvider({ children }) {
     return movs.map((m) => ({ id: novoId(d, 'm'), variacao_id: variacao.id, custo_unitario: variacao.custo, usuario, origem_id: null, ...m }))
   }
 
-  const concluirVenda = useCallback(({ itens, desconto, pagamentos, cliente_id, canal }) => {
+  // partes: uma por CNPJ → [{ empresa_id, itens, desconto, pagamentos }]
+  // Se a cliente levou peças dos dois CNPJs, nascem duas vendas ligadas pelo mesmo grupo.
+  const concluirVenda = useCallback(({ partes, cliente_id, canal }) => {
     const d = structuredClone(atual.current)
     const { porVariacao, porLote } = calcularSaldos(d.movimentacoes)
-    for (const item of itens) {
+    for (const item of partes.flatMap((p) => p.itens)) {
       const saldo = porVariacao.get(item.variacao_id) || 0
       if (!d.config.permitirEstoqueNegativo && item.quantidade > saldo) {
         const v = d.variacoes.find((x) => x.id === item.variacao_id)
@@ -94,36 +96,47 @@ export function DemoProvider({ children }) {
       }
     }
     const data = agoraISO()
-    const id = novoId(d, 'venda')
-    d.numeroVenda += 1
-    const numero = d.numeroVenda
-    const itensVenda = itens.map((item) => {
-      const v = d.variacoes.find((x) => x.id === item.variacao_id)
-      d.movimentacoes.push(...saidas(d, porLote, v, item.quantidade, {
-        tipo: 'saida_venda', motivo: `Venda nº ${numero}`, data, origem_id: id,
-      }))
-      // preço e custo copiados para o item no momento da venda
-      return { variacao_id: v.id, quantidade: item.quantidade, preco_unitario: v.preco, custo_unitario: v.custo }
+    const grupo = partes.length > 1 ? novoId(d, 'grupo') : null
+    const vendas = partes.map(({ empresa_id, itens, desconto, pagamentos }) => {
+      const id = novoId(d, 'venda')
+      d.numeroVenda += 1
+      const numero = d.numeroVenda
+      const itensVenda = itens.map((item) => {
+        const v = d.variacoes.find((x) => x.id === item.variacao_id)
+        d.movimentacoes.push(...saidas(d, porLote, v, item.quantidade, {
+          tipo: 'saida_venda', motivo: `Venda nº ${numero}`, data, origem_id: id,
+        }))
+        // preço e custo copiados para o item no momento da venda
+        return { variacao_id: v.id, quantidade: item.quantidade, preco_unitario: v.preco, custo_unitario: v.custo }
+      })
+      const totais = totaisVenda(itensVenda.map((i) => ({ preco: i.preco_unitario, quantidade: i.quantidade })), desconto)
+      const venda = {
+        id, numero, data, grupo, empresa_id, cliente_id: cliente_id || null, canal, vendedora: usuario,
+        itens: itensVenda, pagamentos: pagamentos.map((p) => ({ ...p, valor: arred(p.valor) })),
+        ...totais, status: 'concluida',
+        nota: emiteNota(d.config, empresa_id) ? { status: 'enviando', ambiente: 'homologacao' } : null,
+      }
+      d.vendas.push(venda)
+      return venda
     })
-    const totais = totaisVenda(itensVenda.map((i) => ({ preco: i.preco_unitario, quantidade: i.quantidade })), desconto)
-    const venda = {
-      id, numero, data, cliente_id: cliente_id || null, canal, vendedora: usuario,
-      itens: itensVenda, pagamentos: pagamentos.map((p) => ({ ...p, valor: arred(p.valor) })),
-      ...totais, status: 'concluida',
-      nota: { status: 'enviando', ambiente: 'homologacao' },
-    }
-    d.vendas.push(venda)
     setDados(d)
 
     // A nota sai em segundo plano: a venda não espera a SEFAZ
-    setTimeout(() => {
-      setDados((anterior) => ({
-        ...anterior,
-        vendas: anterior.vendas.map((v) => (v.id === id ? { ...v, nota: { status: 'autorizada', ambiente: 'homologacao' } } : v)),
-      }))
-    }, 2500)
-    return { venda }
+    const comNota = vendas.filter((v) => v.nota).map((v) => v.id)
+    if (comNota.length) {
+      setTimeout(() => {
+        setDados((anterior) => ({
+          ...anterior,
+          vendas: anterior.vendas.map((v) => (comNota.includes(v.id) ? { ...v, nota: { status: 'autorizada', ambiente: 'homologacao' } } : v)),
+        }))
+      }, 2500)
+    }
+    return { vendas }
   }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const atualizarProduto = useCallback((id, campos) => {
+    setDados((d) => ({ ...d, produtos: d.produtos.map((p) => (p.id === id ? { ...p, ...campos } : p)) }))
+  }, [])
 
   const cancelarVenda = useCallback((vendaId, motivo) => {
     const d = structuredClone(atual.current)
@@ -196,9 +209,9 @@ export function DemoProvider({ children }) {
     return { diferenca }
   }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const criarProduto = useCallback(({ nome, tipo, categoria, marca, preco, custo, estoque_minimo, cores, tamanhos, tonalidades, volume, controla_validade }) => {
+  const criarProduto = useCallback(({ nome, tipo, categoria, marca, empresa_id, preco, custo, estoque_minimo, cores, tamanhos, tonalidades, volume, controla_validade }) => {
     const d = structuredClone(atual.current)
-    const produto = { id: novoId(d, 'p'), nome, tipo, categoria, marca, controla_validade, ativo: true }
+    const produto = { id: novoId(d, 'p'), nome, tipo, categoria, marca, empresa_id, controla_validade, ativo: true }
     d.produtos.push(produto)
     const combinacoes = []
     if (tipo === 'lingerie') {
@@ -281,7 +294,7 @@ export function DemoProvider({ children }) {
         dados, saldos, linhas, lotesComSaldo, produtoPorId, variacaoPorId, clientePorId,
         perfil, setPerfil, ehProprietaria, podeVerCustos: ehProprietaria, usuario,
         concluirVenda, cancelarVenda, reenviarNota, registrarEntrada, registrarAjuste,
-        criarProduto, criarCliente, atualizarConfig, restaurar,
+        criarProduto, atualizarProduto, criarCliente, atualizarConfig, restaurar,
         abrirCaixa, lancarNoCaixa, fecharCaixa, criarConta, marcarPaga,
       }}
     >

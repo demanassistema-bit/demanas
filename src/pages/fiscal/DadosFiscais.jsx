@@ -1,6 +1,6 @@
 import { useDemo } from '../../demo/DemoContext'
 import { hojeISO } from '../../lib/datas'
-import { CAMPOS_PERFIL_FISCAL, faltasPerfilFiscal, situacaoCertificado } from '../../demo/regras'
+import { CAMPOS_PERFIL_FISCAL, emiteNota, empresaEmissora, faltasPerfilFiscal, situacaoCertificado } from '../../demo/regras'
 import { Aviso, Selo } from '../../components/ui'
 
 const REGIMES = { '': 'A confirmar com a contadora', mei: 'MEI', simples: 'Simples Nacional', presumido: 'Lucro Presumido', real: 'Lucro Real' }
@@ -13,7 +13,9 @@ export default function DadosFiscais() {
   const empresa = (chave, valor) => salvar({ empresa: { ...fiscal.empresa, [chave]: valor } })
   const perfil = (categoria, campos) => salvar({ perfis: { ...fiscal.perfis, [categoria]: { ...fiscal.perfis[categoria], ...campos } } })
   const certificado = situacaoCertificado(fiscal.certificadoValidade, hojeISO())
-  const categorias = [...new Set(dados.produtos.filter((p) => p.ativo).map((p) => p.categoria))].sort()
+  const emissora = dados.config.empresas[empresaEmissora(dados.config)]
+  const mudarEmpresa = (id, campos) => atualizarConfig({ empresas: { ...dados.config.empresas, [id]: { ...dados.config.empresas[id], ...campos } } })
+  const categorias = [...new Set(dados.produtos.filter((p) => p.ativo && emiteNota(dados.config, p.empresa_id)).map((p) => p.categoria))].sort()
 
   const campoEmpresa = (chave, nome, props = {}) => (
     <label className="campo"><span>{nome}</span><input value={fiscal.empresa[chave]} onChange={(e) => empresa(chave, e.target.value)} {...props} /></label>
@@ -24,10 +26,25 @@ export default function DadosFiscais() {
       <Aviso tom="ambar">Nada aqui deve ser inventado. Preencha com o que a contadora enviar: regime, códigos e alíquotas são decisão dela, não do sistema.</Aviso>
 
       <section className="cartao secao">
-        <h2>Empresa</h2>
+        <h2>Os dois CNPJs da loja</h2>
+        <p className="texto-suave pequeno">No dia a dia aparece só o apelido. O número do CNPJ fica guardado aqui.</p>
+        {Object.entries(dados.config.empresas).map(([id, e]) => (
+          <div key={id} className="perfil-fiscal">
+            <header className="bloco-topo">
+              <strong>{e.apelido}</strong>
+              <Selo tom={e.tipo === 'me' ? 'oliva' : 'neutro'}>{e.tipo === 'me' ? 'ME · Simples · emite nota' : 'MEI · só consumidor final · sem nota'}</Selo>
+            </header>
+            <div className="grade-campos">
+              <label className="campo"><span>Razão social</span><input value={e.razao_social} onChange={(ev) => mudarEmpresa(id, { razao_social: ev.target.value })} /></label>
+              <label className="campo"><span>CNPJ</span><input inputMode="numeric" value={e.cnpj} onChange={(ev) => mudarEmpresa(id, { cnpj: ev.target.value })} /></label>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="cartao secao">
+        <h2>Dados para a nota · {emissora?.apelido}</h2>
         <div className="grade-campos">
-          {campoEmpresa('razao_social', 'Razão social')}
-          {campoEmpresa('cnpj', 'CNPJ', { inputMode: 'numeric' })}
           {campoEmpresa('inscricao_estadual', 'Inscrição estadual')}
           <label className="campo"><span>Regime tributário</span>
             <select value={fiscal.empresa.regime} onChange={(e) => empresa('regime', e.target.value)}>
@@ -44,7 +61,7 @@ export default function DadosFiscais() {
       </section>
 
       <section className="cartao secao">
-        <h2>Emissão</h2>
+        <h2>Emissão · {emissora?.apelido}</h2>
         <div className="grade-campos">
           <label className="campo"><span>Serviço de emissão (provedor)</span>
             <select value={fiscal.provedor} onChange={(e) => salvar({ provedor: e.target.value })}>
@@ -52,7 +69,7 @@ export default function DadosFiscais() {
               {PROVEDORES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
-          <label className="campo"><span>Validade do certificado digital A1</span>
+          <label className="campo"><span>Validade do certificado A1 do {emissora?.apelido}</span>
             <input type="date" value={fiscal.certificadoValidade} onChange={(e) => salvar({ certificadoValidade: e.target.value })} />
           </label>
         </div>

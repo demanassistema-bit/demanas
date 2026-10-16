@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useDemo } from '../../demo/DemoContext'
 import { diasDesde, hojeISO } from '../../lib/datas'
-import { faltasPerfilFiscal, situacaoCertificado } from '../../demo/regras'
+import { emiteNota, faltasPerfilFiscal, situacaoCertificado } from '../../demo/regras'
 import { Aviso, Selo } from '../../components/ui'
 
 // Notas a partir das vendas, numeradas em ordem (série 1). Na versão real, o número vem do provedor.
@@ -29,7 +29,7 @@ export function AlertasFiscais() {
   const fiscal = dados.config.fiscal
   const certificado = situacaoCertificado(fiscal.certificadoValidade, hojeISO())
   const pendentesAntigas = notas.filter((n) => n.status === 'pendente' && diasDesde(n.venda.data) >= 1)
-  const categorias = [...new Set(dados.produtos.filter((p) => p.ativo).map((p) => p.categoria))]
+  const categorias = [...new Set(dados.produtos.filter((p) => p.ativo && emiteNota(dados.config, p.empresa_id)).map((p) => p.categoria))]
   const semPerfil = categorias.filter((c) => faltasPerfilFiscal(fiscal.perfis[c]).length > 0)
 
   return (
