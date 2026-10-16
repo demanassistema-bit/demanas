@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import Icone from '../components/Icone'
 import { Aviso } from '../components/ui'
+import Calculadora from './Calculadora'
 
 const AREAS = {
   financeiro: {
     titulo: 'Financeiro',
     etapa: 6,
     itens: [
+      'Calculadora de preço ligada aos custos fixos reais do mês (já disponível na outra aba)',
       'Contas a receber (crediário e parcelas do cartão) e contas a pagar',
       'Caixa do dia: abertura, sangria, suprimento e fechamento com conferência',
       'Despesas por categoria, fluxo de caixa e resultado do mês',
@@ -30,12 +32,20 @@ const AREAS = {
 export default function AreaFutura({ area }) {
   const info = AREAS[area]
   const [codigo, setCodigo] = useState('')
-  const [aberta, setAberta] = useState(false)
+  // na demonstração, o desbloqueio vale enquanto a aba estiver aberta
+  const [aberta, setAberta] = useState(() => {
+    try { return sessionStorage.getItem(`demanas-demo-${area}`) === '1' } catch { return false }
+  })
+  const [aba, setAba] = useState('calculadora')
+  const abrir = () => {
+    setAberta(true)
+    try { sessionStorage.setItem(`demanas-demo-${area}`, '1') } catch { /* sem armazenamento */ }
+  }
 
   if (!aberta) {
     return (
       <div className="tela-codigo">
-        <form className="cartao cartao-codigo" onSubmit={(e) => { e.preventDefault(); setAberta(true) }}>
+        <form className="cartao cartao-codigo" onSubmit={(e) => { e.preventDefault(); abrir() }}>
           <span className="selo-cadeado"><Icone nome="cadeado" tamanho={26} /></span>
           <h1>{info.titulo}</h1>
           <p className="texto-suave">Área protegida. Digite o código de acesso para continuar.</p>
@@ -50,13 +60,27 @@ export default function AreaFutura({ area }) {
     )
   }
 
-  return (
-    <div className="pagina pagina-estreita">
-      <header className="pagina-topo"><h1>{info.titulo}</h1></header>
-      <Aviso tom="ambar">Esta área chega na <strong>Etapa {info.etapa}</strong>. Aqui está o que ela vai ter:</Aviso>
+  const emBreve = (
+    <>
+      <Aviso tom="ambar">Esta parte chega na <strong>Etapa {info.etapa}</strong>. Aqui está o que ela vai ter:</Aviso>
       <ul className="cartao lista lista-marcada">
         {info.itens.map((t) => <li key={t}><Icone nome="confirmar" tamanho={18} /> {t}</li>)}
       </ul>
+    </>
+  )
+
+  return (
+    <div className="pagina pagina-estreita">
+      <header className="pagina-topo"><h1>{info.titulo}</h1></header>
+      {area === 'financeiro' ? (
+        <>
+          <div className="abas" role="tablist">
+            <button role="tab" aria-selected={aba === 'calculadora'} className={`aba-topo ${aba === 'calculadora' ? 'ativo' : ''}`} onClick={() => setAba('calculadora')}>Calculadora de preço</button>
+            <button role="tab" aria-selected={aba === 'em-breve'} className={`aba-topo ${aba === 'em-breve' ? 'ativo' : ''}`} onClick={() => setAba('em-breve')}>Em breve</button>
+          </div>
+          {aba === 'calculadora' ? <Calculadora /> : emBreve}
+        </>
+      ) : emBreve}
     </div>
   )
 }

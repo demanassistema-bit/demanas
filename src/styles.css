@@ -338,6 +338,12 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .resultado-calculadora .texto-suave, .resultado-calculadora .metrica-rotulo { color: var(--creme-texto); opacity: 0.85; }
 .preco-sugerido { font-size: 2.6rem; font-weight: 700; color: var(--primaria); line-height: 1.1; }
 [data-theme='escuro'] .preco-sugerido { color: var(--creme-texto); }
+.calculadora { display: flex; flex-direction: column; gap: 14px; }
+.lista-fixos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lista-fixos li { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 8px; align-items: center; }
+.lista-fixos .valor { text-align: right; }
+.linha-destaque th, .linha-destaque td { color: var(--oliva); font-weight: 700; }
+.linha-total th, .linha-total td { font-weight: 700; border-top: 2px solid var(--borda); }
 .segmentado.quebra { flex-wrap: wrap; }
 .segmentado.quebra button { flex: 1 1 40%; }
 

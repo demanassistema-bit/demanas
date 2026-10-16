@@ -72,17 +72,21 @@ export function taxaPagamento(pagamento, taxas) {
 }
 
 // ---------------- Calculadora de preço ----------------
-// Margem = quanto do preço de venda sobra como lucro, depois de custo, taxa e imposto.
-// preço = custo ÷ (1 − margem − taxa − imposto). Devolve null se a soma passar de 100%.
-export function precoPelaMargem({ custo, margem, taxa = 0, imposto = 0 }) {
-  const resto = 1 - (margem + taxa + imposto) / 100
+// custo  = o que se paga por peça vendida (peça, embalagem, entrega paga pela loja)
+// fixo   = custos fixos do mês como % do faturamento (aluguel, luz, contadora…)
+// margem = quanto do preço de venda sobra como lucro, depois de tudo
+// preço  = custo ÷ (1 − margem − taxa − imposto − fixo). Devolve null se a soma passar de 100%.
+export function precoPelaMargem({ custo, margem, taxa = 0, imposto = 0, fixo = 0 }) {
+  const resto = 1 - (margem + taxa + imposto + fixo) / 100
   if (custo <= 0 || resto <= 0) return null
   return arred(custo / resto)
 }
 
-// "Custo vezes 2", "vezes 2,5"...
-export const precoPeloMultiplicador = (custo, multiplicador) =>
-  custo > 0 && multiplicador > 0 ? arred(custo * multiplicador) : null
+// Custos fixos do mês viram um percentual de cada venda
+export function percentualFixo(custosFixos, faturamentoMensal) {
+  const total = arred(custosFixos.reduce((s, c) => s + (Number(c.valor) || 0), 0))
+  return { total, percentual: faturamentoMensal > 0 ? percentual(total, faturamentoMensal) : 0 }
+}
 
 // Final ,90 sempre para cima: 87,30 → 87,90 · 87,95 → 88,90
 export function arredondarPara90(valor) {
@@ -91,15 +95,16 @@ export function arredondarPara90(valor) {
 }
 
 // O que sobra de verdade numa venda, para uma taxa de pagamento
-export function lucroDaVenda({ preco, custo, taxa = 0, imposto = 0 }) {
+export function lucroDaVenda({ preco, custo, taxa = 0, imposto = 0, fixo = 0 }) {
   const valorTaxa = arred((preco * taxa) / 100)
   const valorImposto = arred((preco * imposto) / 100)
-  const lucro = arred(preco - valorTaxa - valorImposto - custo)
-  return { valorTaxa, valorImposto, recebe: arred(preco - valorTaxa), lucro, margem: percentual(lucro, preco) }
+  const valorFixo = arred((preco * fixo) / 100)
+  const lucro = arred(preco - valorTaxa - valorImposto - valorFixo - custo)
+  return { valorTaxa, valorImposto, valorFixo, recebe: arred(preco - valorTaxa), lucro, margem: percentual(lucro, preco) }
 }
 
 // Menor preço sem prejuízo (lucro zero)
-export const precoMinimo = ({ custo, taxa = 0, imposto = 0 }) => precoPelaMargem({ custo, margem: 0, taxa, imposto })
+export const precoMinimo = ({ custo, taxa = 0, imposto = 0, fixo = 0 }) => precoPelaMargem({ custo, margem: 0, taxa, imposto, fixo })
 
 export const nomeVariacao = (v) =>
   [v.cor, v.tamanho, v.tonalidade, v.volume].filter(Boolean).join(' · ') || 'Única'

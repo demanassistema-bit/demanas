@@ -12,9 +12,7 @@ const ITENS = [
   { para: '/produtos', nome: 'Produtos', icone: 'produtos' },
   { para: '/estoque', nome: 'Estoque', icone: 'estoque' },
   { para: '/clientes', nome: 'Clientes', icone: 'clientes' },
-  { para: '/relatorios', nome: 'Relatórios', icone: 'relatorios' },
-  { para: '/calculadora', nome: 'Calculadora', icone: 'calculadora', so: 'proprietaria' },
-  { para: '/financeiro', nome: 'Financeiro', icone: 'financeiro', trancada: true, so: 'proprietaria' },
+  { para: '/relatorios', nome: 'Relatórios', icone: 'relatorios' },  { para: '/financeiro', nome: 'Financeiro', icone: 'financeiro', trancada: true, so: 'proprietaria' },
   { para: '/fiscal', nome: 'Nota fiscal', icone: 'fiscal', trancada: true, so: 'proprietaria' },
   { para: '/configuracoes', nome: 'Configurações', icone: 'configuracoes', so: 'proprietaria' },
 ]

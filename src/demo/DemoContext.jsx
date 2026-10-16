@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { gerarDadosExemplo, VERSAO_DADOS } from './dados'
+import { CONFIG_CALCULADORA, gerarDadosExemplo, VERSAO_DADOS } from './dados'
 import { alocarPorValidade, calcularSaldos, nomeVariacao, novoCustoMedio, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
 
@@ -14,7 +14,8 @@ const CHAVE_PERFIL = 'demanas-demo-perfil'
 function carregar() {
   try {
     const salvo = JSON.parse(localStorage.getItem(CHAVE))
-    if (salvo?.versao === VERSAO_DADOS) return salvo
+    // quem já tinha dados guardados ganha os valores novos da calculadora sem perder o resto
+    if (salvo?.versao === VERSAO_DADOS) return { ...salvo, config: { ...CONFIG_CALCULADORA, ...salvo.config } }
   } catch { /* sem armazenamento: começa do exemplo */ }
   return gerarDadosExemplo()
 }

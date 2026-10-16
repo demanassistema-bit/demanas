@@ -243,6 +243,24 @@ export function gerarDadosExemplo(agora = new Date()) {
       aceitaCrediario: false,
       intimaNaoRetorna: true,
       taxas: { pix: 0, debito: 1.99, credito: 3.49, credito_parcelado: 4.99 },
+      ...CONFIG_CALCULADORA,
     },
   }
+}
+
+// Valores de EXEMPLO da calculadora de preço (as irmãs trocam pelos reais)
+export const CONFIG_CALCULADORA = {
+  custosFixos: [
+    { id: 'f1', nome: 'Aluguel', valor: 1200 },
+    { id: 'f2', nome: 'Energia', valor: 180 },
+    { id: 'f3', nome: 'Internet e telefone', valor: 120 },
+    { id: 'f4', nome: 'Contadora', valor: 350 },
+    { id: 'f5', nome: 'Tarifa do banco e da maquininha', valor: 60 },
+    { id: 'f6', nome: 'Sistema e aplicativos', valor: 50 },
+    { id: 'f7', nome: 'Pró-labore das sócias', valor: 0 },
+  ],
+  calculadora: {
+    embalagem: 2, entrega: 0, entregaQuemPaga: 'loja', comEntrega: false,
+    margem: 20, imposto: 0, formaBase: 'credito', final90: true, faturamento: null,
+  },
 }
