@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import { Link } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
 import { textoLote } from '../lib/estoque'
 import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
-import { diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte } from '../lib/datas'
+import { deISO, diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte } from '../lib/datas'
 import Icone from '../components/Icone'
 import { Metrica, Selo, seloValidade, Vazio } from '../components/ui'
 import { situacaoEncomenda } from '../demo/regras'
@@ -16,27 +17,46 @@ function saudacao() {
 }
 
 export default function Inicio() {
-  const { dados, linhas, clientePorId, podeVerCustos } = useDemo()
+  const { dados, linhas, clientePorId } = useDemo()
   const catalogo = useCatalogo()
+  const podeVerCustos = catalogo.podeVerCustos
   const linhaReal = useMemo(() => new Map(catalogo.linhas.map((l) => [l.id, l])), [catalogo.linhas])
   const hoje = hojeISO()
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const mes = hoje.slice(0, 7)
   const mesAtual = new Date().getMonth()
 
+  // Vendas de verdade do mês (do banco)
+  const [vendasMes, setVendasMes] = useState([])
+  const [custoMes, setCustoMes] = useState(0)
+  useEffect(() => {
+    const inicioMes = deISO(`${mes}-01`).toISOString()
+    supabase.from('vendas')
+      .select('id, numero, total, status, canal, criado_em, clientes(nome), venda_itens(id, quantidade)')
+      .gte('criado_em', inicioMes).order('numero', { ascending: false }).limit(2000)
+      .then(async ({ data }) => {
+        const lista = data || []
+        setVendasMes(lista)
+        if (!podeVerCustos) return
+        const itens = lista.filter((v) => v.status === 'concluida').flatMap((v) => v.venda_itens)
+        if (!itens.length) return setCustoMes(0)
+        const { data: custos } = await supabase.from('custos_venda_itens').select('venda_item_id, custo_unitario').in('venda_item_id', itens.map((i) => i.id))
+        const porItem = new Map((custos || []).map((c) => [c.venda_item_id, Number(c.custo_unitario)]))
+        setCustoMes(arred(itens.reduce((s, i) => s + (porItem.get(i.id) || 0) * i.quantidade, 0)))
+      })
+  }, [mes, podeVerCustos])
+
   const resumo = useMemo(() => {
-    const validas = dados.vendas.filter((v) => v.status === 'concluida')
-    const doDia = validas.filter((v) => diaDe(v.data) === hoje)
-    const doMes = validas.filter((v) => diaDe(v.data).startsWith(mes))
-    const soma = (lista) => arred(lista.reduce((s, v) => s + v.total, 0))
-    const custo = arred(doMes.reduce((s, v) => s + v.itens.reduce((c, i) => c + i.custo_unitario * i.quantidade, 0), 0))
+    const validas = vendasMes.filter((v) => v.status === 'concluida')
+    const doDia = validas.filter((v) => diaDe(v.criado_em) === hoje)
+    const soma = (lista) => arred(lista.reduce((s, v) => s + Number(v.total), 0))
     return {
       dia: soma(doDia), qtdDia: doDia.length,
-      mes: soma(doMes), qtdMes: doMes.length,
-      ticket: doMes.length ? arred(soma(doMes) / doMes.length) : 0,
-      lucro: arred(soma(doMes) - custo),
+      mes: soma(validas), qtdMes: validas.length,
+      ticket: validas.length ? arred(soma(validas) / validas.length) : 0,
+      lucro: arred(soma(validas) - custoMes),
     }
-  }, [dados.vendas, hoje, mes])
+  }, [vendasMes, custoMes, hoje])
 
   const acabando = catalogo.linhas
     .filter((l) => l.ativo && l.produto.tipo !== 'kit' && l.saldo <= l.estoque_minimo)
@@ -47,8 +67,7 @@ export default function Inicio() {
   const aniversariantes = dados.clientes
     .filter((c) => c.nascimento && Number(c.nascimento.slice(5, 7)) === mesAtual + 1)
     .sort((a, b) => a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)))
-  const pendentes = dados.vendas.filter((v) => v.nota?.status === 'pendente')
-  const ultimas = [...dados.vendas].reverse().slice(0, 5)
+  const ultimas = vendasMes.slice(0, 5)
   const contasProximas = (dados.contasPagar || []).filter((c) => !c.pagoEm && diasAte(c.vencimento) <= 7)
   // encomendas que pedem atenção: chegaram (avisar), atrasadas, chegando em até 7 dias
   const encomendasAtencao = (dados.encomendas || [])
@@ -72,13 +91,6 @@ export default function Inicio() {
         {podeVerCustos && <Metrica rotulo="Lucro bruto do mês" valor={formatarMoeda(resumo.lucro)} detalhe="vendas menos custo das peças" />}
       </section>
 
-      {pendentes.length > 0 && (
-        <Link to="/vendas?filtro=pendentes" className="faixa-alerta">
-          <Icone nome="alerta" />
-          <span><strong>{pendentes.length} {pendentes.length === 1 ? 'nota pendente' : 'notas pendentes'}</strong> · a venda está feita, falta corrigir e reenviar a nota</span>
-          <Icone nome="seguir" tamanho={18} />
-        </Link>
-      )}
 
       <div className="grade-blocos">
         <section className="cartao bloco">
@@ -190,19 +202,19 @@ export default function Inicio() {
             <h2>Últimas vendas</h2>
             <Link to="/vendas" className="botao-link">Ver tudo</Link>
           </header>
-          <ul className="lista">
+          {ultimas.length === 0 ? <Vazio icone="vendas" titulo="Nenhuma venda este mês ainda" /> : <ul className="lista">
             {ultimas.map((v) => (
               <li key={v.id}>
                 <Link to={`/vendas?venda=${v.id}`} className="linha-lista">
                   <span>
-                    <strong>{formatarMoeda(v.total)}</strong>
-                    <small>{diaDe(v.data) === hoje ? `hoje, ${formatarHora(v.data)}` : new Date(v.data).toLocaleDateString('pt-BR')} · {CANAIS[v.canal]}{v.cliente_id ? ` · ${clientePorId.get(v.cliente_id)?.nome.split(' ')[0]}` : ''}</small>
+                    <strong>nº {v.numero} · {formatarMoeda(v.total)}</strong>
+                    <small>{diaDe(v.criado_em) === hoje ? `hoje, ${formatarHora(v.criado_em)}` : new Date(v.criado_em).toLocaleDateString('pt-BR')} · {CANAIS[v.canal]}{v.clientes ? ` · ${v.clientes.nome.split(' ')[0]}` : ''}</small>
                   </span>
                   {v.status === 'cancelada' && <Selo tom="vinho">Cancelada</Selo>}
                 </Link>
               </li>
             ))}
-          </ul>
+          </ul>}
         </section>
       </div>
     </div>

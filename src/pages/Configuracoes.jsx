@@ -2,98 +2,89 @@ import { useEffect, useState } from 'react'
 import { useDemo } from '../demo/DemoContext'
 import { lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { filtroInteiro, filtroPercentual, limparTexto, TAMANHO } from '../lib/limites'
+import { TIPOS_TAXA } from '../lib/vendas'
 import { BotaoPerigo } from '../components/Modal'
 import { useCatalogo } from '../contexts/CatalogoContext'
 import { Aviso } from '../components/ui'
 
-function Interruptor({ ligado, aoMudar, children, decisao }) {
+function Interruptor({ ligado, aoMudar, children, decisao, disabled }) {
   return (
     <label className="interruptor-linha">
       <span>
         {children}
         {decisao && <small className="decisao">decisão em aberto · confirmar com vocês</small>}
       </span>
-      <input type="checkbox" role="switch" className="interruptor" checked={ligado} onChange={(e) => aoMudar(e.target.checked)} />
+      <input type="checkbox" role="switch" className="interruptor" checked={ligado} disabled={disabled} onChange={(e) => aoMudar(e.target.checked)} />
     </label>
   )
 }
 
 export default function Configuracoes() {
   const { dados, atualizarConfig, restaurar } = useDemo()
-  const { empresas } = useCatalogo()
+  const cat = useCatalogo()
+  const { empresas, parametros, categorias } = cat
   const c = dados.config
-  // textos digitados das taxas, por CNPJ: { day: { debito: '1,99' }, fe: {...} }
-  const [taxas, setTaxas] = useState(() => Object.fromEntries(Object.entries(c.empresas).map(([id, e]) => [id,
-    Object.fromEntries(Object.entries(e.taxas).map(([k, v]) => [k, paraCampoMoeda(v)]))])))
+  const [erro, setErro] = useState('')
   const [restaurado, setRestaurado] = useState(false)
-
-  const mudarEmpresa = (id, campos) => atualizarConfig({ empresas: { ...c.empresas, [id]: { ...c.empresas[id], ...campos } } })
-  const salvarTaxa = (id, chave, digitado) => {
-    const texto = filtroPercentual(digitado)
-    setTaxas({ ...taxas, [id]: { ...taxas[id], [chave]: texto } })
-    const n = lerMoeda(texto)
-    if (n != null && !Number.isNaN(n)) mudarEmpresa(id, { taxas: { ...c.empresas[id].taxas, [chave]: n } })
-  }
+  const executar = async (promessa) => { const r = await promessa; setErro(r?.erro || '') }
 
   return (
     <div className="pagina pagina-estreita">
       <header className="pagina-topo"><h1>Configurações</h1></header>
-      <p className="texto-suave">Estas regras mudam como o sistema se comporta. As marcadas como "decisão em aberto" são perguntas para vocês.</p>
+      <p className="texto-suave">Estas regras mudam como o sistema se comporta e valem para todo mundo. As marcadas como "decisão em aberto" são perguntas para vocês.</p>
+      {erro && <Aviso tom="vinho">{erro}</Aviso>}
 
       <section className="cartao secao">
         <h2>Vendas</h2>
-        <label className="interruptor-linha">
-          <span>
-            Desconto máximo da vendedora sem aprovação
-            <small className="decisao">decisão em aberto · confirmar com vocês</small>
-          </span>
-          <span className="campo-sufixo">
-            <input inputMode="numeric" value={c.limiteDescontoVendedora} onChange={(e) => atualizarConfig({ limiteDescontoVendedora: Math.min(Number(filtroInteiro(e.target.value, 3)) || 0, 100) })} aria-label="Limite de desconto" />
-            %
-          </span>
-        </label>
-        <Interruptor ligado={c.permitirEstoqueNegativo} aoMudar={(v) => atualizarConfig({ permitirEstoqueNegativo: v })} decisao>
+        <LimiteDesconto atual={Number(parametros.limite_desconto_vendedora ?? 0)} aoSalvar={(n) => executar(cat.salvarParametro('limite_desconto_vendedora', n))} />
+        <Interruptor ligado={parametros.permitir_estoque_negativo === true} aoMudar={(v) => executar(cat.salvarParametro('permitir_estoque_negativo', v))}>
           Permitir vender peça que o sistema diz estar sem estoque
+          <small className="texto-suave">Útil só no começo, enquanto a contagem não estiver completa. O estoque fica negativo até a próxima entrada ou contagem.</small>
         </Interruptor>
-        <Interruptor ligado={c.aceitaCrediario} aoMudar={(v) => atualizarConfig({ aceitaCrediario: v })} decisao>
+        <Interruptor ligado={c.aceitaCrediario} aoMudar={(v) => atualizarConfig({ aceitaCrediario: v })} decisao disabled>
           Aceitar crediário (fiado)
-        </Interruptor>
-        <Interruptor ligado={c.intimaNaoRetorna} aoMudar={(v) => atualizarConfig({ intimaNaoRetorna: v })} decisao>
-          Peça íntima devolvida não volta ao estoque (higiene)
+          <small className="texto-suave">Chega com o Financeiro, que controla quem deve e quando paga.</small>
         </Interruptor>
       </section>
 
-      {Object.entries(c.empresas).map(([id, e]) => (
-        <section key={id} className="cartao secao">
+      <section className="cartao secao">
+        <h2>Devolução: peça que não volta ao estoque</h2>
+        <p className="texto-suave pequeno">Marque as categorias de higiene (calcinha, peça íntima): na devolução, a peça vem marcada para não voltar à prateleira.</p>
+        {categorias.length === 0 ? <p className="texto-suave pequeno">As categorias aparecem aqui quando os produtos forem cadastrados.</p> : categorias.map((k) => (
+          <Interruptor key={k.id} ligado={k.nao_volta_ao_estoque} aoMudar={(v) => executar(cat.marcarHigiene(k.id, v))}>{k.nome}</Interruptor>
+        ))}
+      </section>
+
+      {Object.values(empresas).map((e) => (
+        <section key={e.id} className="cartao secao">
           <header className="bloco-topo">
-            <h2>{empresas[id]?.apelido || e.apelido}</h2>
+            <h2>{e.apelido}</h2>
             <span className="selos"><span className="selo selo-neutro">{e.tipo === 'me' ? 'ME · emite nota' : 'MEI · sem nota'}</span></span>
           </header>
           <label className="campo campo-estreito">
             <span>Nome que aparece no sistema</span>
-            <ApelidoEmpresa id={id} dona={e.dona} aoSalvar={(apelido) => mudarEmpresa(id, { apelido })} />
+            <ApelidoEmpresa id={e.id} dona={e.dona} />
           </label>
-          <p className="texto-suave pequeno">Taxas da maquininha da {e.dona}, usadas para calcular o lucro de verdade de cada venda.</p>
+          <p className="texto-suave pequeno">Taxas da maquininha da {e.dona}. Cada venda guarda a taxa do dia em que foi feita, para o lucro de verdade.</p>
           <div className="grade-campos">
-            {[['pix', 'Pix'], ['debito', 'Débito'], ['credito', 'Crédito à vista'], ['credito_parcelado', 'Crédito parcelado']].map(([k, n]) => (
-              <label key={k} className="campo"><span>{n} (%)</span><input inputMode="decimal" value={taxas[id]?.[k] ?? ''} onChange={(ev) => salvarTaxa(id, k, ev.target.value)} /></label>
+            {Object.entries(TIPOS_TAXA).map(([tipo, nome]) => (
+              <Taxa key={tipo} nome={nome} atual={cat.taxas[e.id]?.[tipo] ?? 0} aoSalvar={(n) => executar(cat.salvarTaxa(e.id, tipo, n))} />
             ))}
           </div>
         </section>
       ))}
 
       <section className="cartao secao">
-        <h2>Ainda nesta tela, na versão real</h2>
+        <h2>Ainda nesta tela, mais adiante</h2>
         <ul className="lista-simples">
-          <li>Equipe: convidar pessoas e definir quem vê custo, financeiro e nota fiscal</li>
-          <li>Os dados fiscais da empresa já estão em Nota fiscal → Dados fiscais</li>
           <li>Política de trocas e mensagem do recibo</li>
+          <li>Os dados fiscais da empresa já estão em Nota fiscal → Dados fiscais</li>
         </ul>
       </section>
 
       <section className="cartao secao">
-        <h2>Demonstração</h2>
-        <p className="texto-suave pequeno">Volta tudo para os dados de exemplo originais: apaga as vendas e entradas feitas durante a apresentação.</p>
+        <h2>Dados de exemplo</h2>
+        <p className="texto-suave pequeno">Clientes, encomendas e financeiro ainda usam dados de exemplo, guardados só neste aparelho. Este botão volta esses exemplos ao início. Não mexe em produtos, estoque nem vendas, que já são de verdade.</p>
         {restaurado ? <Aviso tom="oliva">Dados de exemplo restaurados.</Aviso> : (
           <BotaoPerigo texto="Restaurar dados de exemplo" aoConfirmar={() => { restaurar(); setRestaurado(true) }} />
         )}
@@ -102,8 +93,51 @@ export default function Configuracoes() {
   )
 }
 
+function LimiteDesconto({ atual, aoSalvar }) {
+  const [texto, setTexto] = useState(String(atual))
+  useEffect(() => { setTexto(String(atual)) }, [atual])
+  function salvar() {
+    const n = Math.min(Number(texto) || 0, 100)
+    setTexto(String(n))
+    if (n !== atual) aoSalvar(n)
+  }
+  return (
+    <label className="interruptor-linha">
+      <span>
+        Desconto máximo da vendedora sem aprovação
+        <small className="decisao">decisão em aberto · confirmar com vocês</small>
+      </span>
+      <span className="campo-sufixo">
+        <input inputMode="numeric" value={texto} onChange={(e) => setTexto(filtroInteiro(e.target.value, 3))} onBlur={salvar} aria-label="Limite de desconto" />
+        %
+      </span>
+    </label>
+  )
+}
+
+// Taxa salva ao sair do campo (de 0 a 30%)
+function Taxa({ nome, atual, aoSalvar }) {
+  const [texto, setTexto] = useState(paraCampoMoeda(atual))
+  useEffect(() => { setTexto(paraCampoMoeda(atual)) }, [atual])
+  const [erro, setErro] = useState('')
+  function salvar() {
+    const n = lerMoeda(texto) ?? 0
+    if (Number.isNaN(n) || n < 0 || n > 30) return setErro('De 0 a 30%.')
+    setErro('')
+    setTexto(paraCampoMoeda(n))
+    if (n !== atual) aoSalvar(n)
+  }
+  return (
+    <label className="campo">
+      <span>{nome} (%)</span>
+      <input inputMode="decimal" value={texto} onChange={(e) => setTexto(filtroPercentual(e.target.value))} onBlur={salvar} />
+      {erro && <small className="texto-alerta">{erro}</small>}
+    </label>
+  )
+}
+
 // O apelido do CNPJ fica no banco (vale para todo mundo). Nunca fica vazio.
-function ApelidoEmpresa({ id, dona, aoSalvar }) {
+function ApelidoEmpresa({ id, dona }) {
   const { empresas, atualizarEmpresa } = useCatalogo()
   const atual = empresas[id]?.apelido || ''
   const [texto, setTexto] = useState(atual)
@@ -114,9 +148,7 @@ function ApelidoEmpresa({ id, dona, aoSalvar }) {
     setTexto(apelido)
     if (apelido === atual) return
     const r = await atualizarEmpresa(id, { apelido })
-    if (r.erro) return setErro(r.erro)
-    setErro('')
-    aoSalvar(apelido)
+    setErro(r.erro || '')
   }
   return (
     <>

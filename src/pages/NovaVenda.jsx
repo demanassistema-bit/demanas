@@ -1,24 +1,32 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useDemo } from '../demo/DemoContext'
-import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda, FORMAS_PAGAMENTO, CANAIS } from '../lib/moeda'
-import { diasDesde } from '../lib/datas'
-import { erroWhatsApp, filtroDinheiro, filtroPercentual, filtroTelefone, formatarWhatsApp, LIMITE, limparTexto, linkWhatsApp, TAMANHO } from '../lib/limites'
-import { descontoPrecisaAprovacao, dividirDesconto, emiteNota, normalizar, percentual, taxaPagamento, taxasDe, totaisVenda } from '../demo/regras'
+import { useAuth } from '../contexts/AuthContext'
+import { useCatalogo } from '../contexts/CatalogoContext'
+import { supabase, traduzirErro } from '../lib/supabase'
+import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda, CANAIS } from '../lib/moeda'
+import { filtroDinheiro, filtroPercentual, filtroTelefone, formatarWhatsApp, LIMITE, limparTexto, linkWhatsApp, numeroWhatsApp, TAMANHO, whatsappValido } from '../lib/limites'
+import { falta, FORMAS, MAX_PARCELAS, partesDaVenda, passaDoLimite, taxaEstimada, textoRecibo } from '../lib/vendas'
+import { percentual } from '../demo/regras'
 import Icone from '../components/Icone'
+import LeitorCamera, { temLeitorCamera } from '../components/LeitorCamera'
 import { Aviso, buscarVariacoes, CampoBusca, Selo } from '../components/ui'
 
 const vazio = () => ({ carrinho: [], etapa: 'itens', inicio: null })
 const pagamentoInicial = () => [{ forma: 'pix', valorTexto: '', parcelas: 1 }]
 
+// Uma forma só: paga o total. Duas: cada uma com o valor digitado.
+export function valoresPagamento(pagamentos, total) {
+  return pagamentos.length === 1
+    ? [{ forma: pagamentos[0].forma, valor: total, parcelas: pagamentos[0].parcelas }]
+    : pagamentos.map((p) => ({ forma: p.forma, valor: lerMoeda(p.valorTexto) || 0, parcelas: p.parcelas }))
+}
+
 // Pagamento de uma parte da venda (um CNPJ = uma maquininha)
-function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, formas, taxas, podeVerCustos }) {
+function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, taxas }) {
   const [recebido, setRecebido] = useState('')
-  const finais = pagamentos.length === 1
-    ? [{ ...pagamentos[0], valor: total }]
-    : pagamentos.map((p) => ({ ...p, valor: lerMoeda(p.valorTexto) || 0 }))
-  const falta = arred(total - finais.reduce((s, p) => s + p.valor, 0))
-  const taxa = arred(finais.reduce((s, p) => s + taxaPagamento(p, taxas), 0))
+  const finais = valoresPagamento(pagamentos, total)
+  const faltando = falta(total, finais)
+  const taxa = taxas ? taxaEstimada(finais, taxas) : 0
   const dinheiroUnico = pagamentos.length === 1 && pagamentos[0].forma === 'dinheiro'
   const troco = dinheiroUnico && lerMoeda(recebido) ? arred(lerMoeda(recebido) - total) : null
   const mudar = (i, campos) => setPagamentos(pagamentos.map((p, j) => (j === i ? { ...p, ...campos } : p)))
@@ -40,10 +48,9 @@ function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, f
       {subtitulo && <p className="texto-suave pequeno">{subtitulo}</p>}
       {pagamentos.map((p, i) => (
         <div key={i} className="pagamento-linha">
-          {p.sinal && <small className="texto-positivo">Sinal já pago na encomenda</small>}
           <div className="formas">
-            {formas.map(([chave, nome]) => (
-              <button key={chave} className={`forma ${p.forma === chave ? 'ativo' : ''}`} onClick={() => mudar(i, { forma: chave })}>{nome}</button>
+            {Object.entries(FORMAS).map(([chave, nome]) => (
+              <button key={chave} className={`forma ${p.forma === chave ? 'ativo' : ''}`} onClick={() => mudar(i, { forma: chave, parcelas: 1 })}>{nome}</button>
             ))}
           </div>
           <div className="linha-campos">
@@ -52,7 +59,7 @@ function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, f
             )}
             {p.forma === 'cartao_credito' && (
               <select className="campo-solto" value={p.parcelas} onChange={(e) => mudar(i, { parcelas: Number(e.target.value) })} aria-label="Parcelas">
-                {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n === 1 ? 'À vista' : `${n}x de ${formatarMoeda(arred(finais[i].valor / n))}`}</option>)}
+                {Array.from({ length: MAX_PARCELAS }, (_, k) => k + 1).map((n) => <option key={n} value={n}>{n === 1 ? 'À vista' : `${n}x de ${formatarMoeda(arred(finais[i].valor / n))}`}</option>)}
               </select>
             )}
           </div>
@@ -69,102 +76,105 @@ function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, f
       {pagamentos.length === 1
         ? <button className="botao-link" onClick={dividir}><Icone nome="somar" tamanho={16} /> Dividir em duas formas</button>
         : <button className="botao-link" onClick={() => setPagamentos([{ ...pagamentos[0], valorTexto: '' }])}>Voltar para uma forma só</button>}
-      {pagamentos.length > 1 && falta !== 0 && <p className="texto-alerta pequeno">{falta > 0 ? `Faltam ${formatarMoeda(falta)}` : `Passou ${formatarMoeda(-falta)} do total`}</p>}
-      {podeVerCustos && taxa > 0 && <p className="texto-suave pequeno">Taxa estimada da maquininha: {formatarMoeda(taxa)}</p>}
+      {pagamentos.length > 1 && faltando !== 0 && <p className="texto-alerta pequeno">{faltando > 0 ? `Faltam ${formatarMoeda(faltando)}` : `Passou ${formatarMoeda(-faltando)} do total`}</p>}
+      {taxa > 0 && <p className="texto-suave pequeno">Taxa estimada da maquininha: {formatarMoeda(taxa)}</p>}
     </section>
   )
 }
 
-export function valoresPagamento(pagamentos, total) {
-  return pagamentos.length === 1
-    ? [{ forma: pagamentos[0].forma, valor: total, parcelas: pagamentos[0].parcelas }]
-    : pagamentos.map((p) => ({ forma: p.forma, valor: lerMoeda(p.valorTexto) || 0, parcelas: p.parcelas }))
-}
-
 export default function NovaVenda() {
-  const { dados, linhas, clientePorId, ehProprietaria, podeVerCustos, concluirVenda, criarCliente, atualizarEncomenda } = useDemo()
-  const config = dados.config
-  const empresas = config.empresas
-
-  // Entrega de encomenda: a venda já abre com as peças e a cliente
+  const { permissoes } = useAuth()
+  const cat = useCatalogo()
+  const { linhas, empresas, parametros, taxas, podeVerCustos, recarregar } = cat
+  const admin = permissoes.admin
+  const permitirNegativo = parametros.permitir_estoque_negativo === true
+  const limite = Number(parametros.limite_desconto_vendedora ?? 0)
   const [params] = useSearchParams()
-  const [encomenda, setEncomenda] = useState(() => (dados.encomendas || []).find((e) => e.id === params.get('encomenda') && e.status !== 'entregue') || null)
-  const [estado, setEstado] = useState(() => (encomenda
-    ? { carrinho: encomenda.itens.filter((i) => i.variacao_id).map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })), etapa: 'itens', inicio: Date.now() }
-    : vazio()))
+  const veioDeEncomenda = params.has('encomenda')
+
+  const [estado, setEstado] = useState(vazio)
   const { carrinho, etapa } = estado
   const [busca, setBusca] = useState('')
+  const [camera, setCamera] = useState(false)
   const [erro, setErro] = useState('')
+  const [enviando, setEnviando] = useState(false)
 
   // pagamento
-  const [clienteId, setClienteId] = useState(encomenda?.cliente_id || null)
+  const [cliente, setCliente] = useState(null)
   const [buscaCliente, setBuscaCliente] = useState('')
+  const [clientesEncontrados, setClientesEncontrados] = useState([])
   const [cadastro, setCadastro] = useState(null) // { nome, whatsapp } quando aberto
   const [canal, setCanal] = useState('loja')
   const [descontoTexto, setDescontoTexto] = useState('')
   const [descontoModo, setDescontoModo] = useState('reais')
-  const [aprovado, setAprovado] = useState(false)
+  const [aprovacao, setAprovacao] = useState(null) // id da autorização
+  const [codigo, setCodigo] = useState('')
   const [pagamentosPor, setPagamentosPor] = useState({}) // { day: [...], fe: [...] }
   const [resultado, setResultado] = useState(null)
 
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
-  const resultados = useMemo(() => buscarVariacoes(linhas.filter((l) => l.ativo), busca), [linhas, busca])
+  const vendaveis = useMemo(() => linhas.filter((l) => l.ativo), [linhas])
+  const resultados = useMemo(() => buscarVariacoes(vendaveis, busca), [vendaveis, busca])
 
   // Atalhos: o que mais vendeu nos últimos 30 dias e ainda tem em estoque
-  const atalhos = useMemo(() => {
-    const contagem = new Map()
-    for (const v of dados.vendas) {
-      if (v.status !== 'concluida' || diasDesde(v.data) > 30) continue
-      for (const i of v.itens) contagem.set(i.variacao_id, (contagem.get(i.variacao_id) || 0) + i.quantidade)
-    }
-    return [...contagem.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([id]) => linhaPorId.get(id))
-      .filter((l) => l && l.saldo > 0)
-      .slice(0, 6)
-  }, [dados.vendas, linhaPorId])
+  const [maisVendidos, setMaisVendidos] = useState([])
+  useEffect(() => {
+    const desde = new Date(Date.now() - 30 * 86400000).toISOString()
+    supabase.from('venda_itens').select('variacao_id, quantidade, vendas!inner(criado_em, status)')
+      .gte('vendas.criado_em', desde).eq('vendas.status', 'concluida').limit(3000)
+      .then(({ data }) => {
+        const soma = new Map()
+        for (const i of data || []) soma.set(i.variacao_id, (soma.get(i.variacao_id) || 0) + i.quantidade)
+        setMaisVendidos([...soma.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id))
+      })
+  }, [])
+  const atalhos = maisVendidos.map((id) => linhaPorId.get(id)).filter((l) => l && l.ativo && (l.saldo > 0 || permitirNegativo)).slice(0, 6)
 
-  const itens = carrinho.map((c) => ({ ...c, linha: linhaPorId.get(c.variacao_id) }))
+  // Busca de cliente no banco (nome ou WhatsApp)
+  useEffect(() => {
+    const texto = buscaCliente.replace(/[,()%*\\]/g, ' ').trim()
+    if (texto.length < 2) { setClientesEncontrados([]); return undefined }
+    const t = setTimeout(async () => {
+      const digitos = texto.replace(/\D/g, '')
+      const filtro = digitos.length >= 4 ? `nome.ilike.%${texto}%,whatsapp.ilike.%${digitos}%` : `nome.ilike.%${texto}%`
+      const { data } = await supabase.from('clientes').select('id, nome, whatsapp').or(filtro).order('nome').limit(6)
+      setClientesEncontrados(data || [])
+    }, 250)
+    return () => clearTimeout(t)
+  }, [buscaCliente])
+
+  const itens = carrinho.map((c) => ({ ...c, linha: linhaPorId.get(c.variacao_id) })).filter((i) => i.linha)
   const pecas = itens.reduce((s, i) => s + i.quantidade, 0)
   const textoPecas = `${pecas} ${pecas === 1 ? 'peça' : 'peças'}`
-  const subtotal = totaisVenda(itens.map((i) => ({ preco: i.linha.preco, quantidade: i.quantidade }))).subtotal
+  const subtotal = arred(itens.reduce((s, i) => s + i.linha.preco * i.quantidade, 0))
   const descontoDigitado = lerMoeda(descontoTexto) || 0
-  const descontoReais = descontoModo === 'percentual' ? arred((subtotal * descontoDigitado) / 100) : descontoDigitado
-  const { desconto, total } = totaisVenda(itens.map((i) => ({ preco: i.linha.preco, quantidade: i.quantidade })), descontoReais)
-  const descontoPassou = descontoReais > subtotal
-  const vendaZerada = itens.length > 0 && total <= 0
-  const precisaAprovacao = descontoPrecisaAprovacao(subtotal, desconto, config.limiteDescontoVendedora, ehProprietaria) && !aprovado
+  const desconto = descontoModo === 'percentual' ? arred((subtotal * Math.min(descontoDigitado, 100)) / 100) : descontoDigitado
+  const total = arred(subtotal - desconto)
+  const descontoInvalido = desconto >= subtotal && itens.length > 0
+  const precisaAprovacao = !admin && passaDoLimite(subtotal, desconto, limite) && !aprovacao
 
-  // A venda separada por CNPJ: cada parte paga na maquininha do seu CNPJ
-  const partes = useMemo(() => {
-    const ordem = []
-    const por = {}
-    for (const i of itens) {
-      const e = i.linha.produto.empresa_id
-      if (!por[e]) { por[e] = []; ordem.push(e) }
-      por[e].push(i)
-    }
-    const lista = ordem.map((e) => ({ chave: e, itens: por[e], subtotal: totaisVenda(por[e].map((i) => ({ preco: i.linha.preco, quantidade: i.quantidade }))).subtotal }))
-    const descontos = dividirDesconto(lista, desconto)
-    return lista.map((p) => ({ ...p, desconto: descontos[p.chave], total: arred(p.subtotal - descontos[p.chave]) }))
-  }, [itens, desconto]) // eslint-disable-line react-hooks/exhaustive-deps
+  const partes = useMemo(() => partesDaVenda(
+    itens.map((i) => ({ variacao_id: i.variacao_id, quantidade: i.quantidade, preco: i.linha.preco, empresa_id: i.linha.produto.empresa_id })),
+    descontoInvalido ? 0 : desconto,
+  ), [itens, desconto, descontoInvalido]) // eslint-disable-line react-hooks/exhaustive-deps
   const duasEmpresas = partes.length > 1
+  const pagamentoFecha = partes.every((p) => falta(p.total, valoresPagamento(pagamentosPor[p.empresa_id] || pagamentoInicial(), p.total)) === 0)
 
-  const faltas = partes.map((p) => {
-    const vals = valoresPagamento(pagamentosPor[p.chave] || pagamentoInicial(), p.total)
-    return arred(p.total - vals.reduce((s, v) => s + v.valor, 0))
-  })
-  const pagamentoFecha = faltas.every((f) => f === 0)
+  // quanto já está no carrinho de cada peça (o kit usa as peças que o formam)
+  function cabe(linha, qtd) {
+    if (permitirNegativo) return null
+    if (qtd <= linha.saldo) return null
+    if (linha.produto.tipo === 'kit') return linha.saldo <= 0 ? `Não dá para montar o kit ${linha.produto.nome}: falta peça no estoque.` : `Dá para montar só ${linha.saldo} desse kit.`
+    return linha.saldo <= 0 ? `${linha.produto.nome} (${linha.nomeVariacao}) está sem estoque.` : `Só há ${linha.saldo} em estoque de ${linha.produto.nome} (${linha.nomeVariacao}).`
+  }
 
   function adicionar(linha) {
     setErro('')
     const atual = carrinho.find((c) => c.variacao_id === linha.id)
     const qtd = (atual?.quantidade || 0) + 1
     if (qtd > LIMITE.quantidadeItem) return setErro(`Até ${LIMITE.quantidadeItem} da mesma peça por venda.`)
-    if (!config.permitirEstoqueNegativo && qtd > linha.saldo) {
-      setErro(linha.saldo <= 0 ? `${linha.produto.nome} (${linha.nomeVariacao}) está sem estoque.` : `Só há ${linha.saldo} em estoque de ${linha.nomeVariacao}.`)
-      return
-    }
+    const semEstoque = cabe(linha, qtd)
+    if (semEstoque) return setErro(semEstoque)
     setEstado((e) => ({
       ...e,
       inicio: e.inicio || Date.now(),
@@ -175,14 +185,21 @@ export default function NovaVenda() {
     setBusca('')
   }
 
+  // leitor de código (USB ou câmera): código exato entra direto no carrinho
+  function lerCodigo(codigo) {
+    const exata = vendaveis.find((l) => l.codigo_barras === codigo.trim() || l.sku === codigo.trim())
+    if (exata) adicionar(exata)
+    else setErro(`Nenhuma peça com o código ${codigo}. Confira se ela está cadastrada.`)
+  }
+
   function mudarQuantidade(variacaoId, delta) {
     setErro('')
     const linha = linhaPorId.get(variacaoId)
     const atual = carrinho.find((c) => c.variacao_id === variacaoId)
-    if (delta > 0 && atual.quantidade + delta > LIMITE.quantidadeItem) return
-    if (delta > 0 && !config.permitirEstoqueNegativo && atual.quantidade + delta > linha.saldo) {
-      setErro(`Só há ${linha.saldo} em estoque de ${linha.nomeVariacao}.`)
-      return
+    if (delta > 0) {
+      if (atual.quantidade + delta > LIMITE.quantidadeItem) return
+      const semEstoque = cabe(linha, atual.quantidade + delta)
+      if (semEstoque) return setErro(semEstoque)
     }
     setEstado((e) => ({
       ...e,
@@ -194,78 +211,90 @@ export default function NovaVenda() {
 
   function irParaPagamento() {
     setErro('')
-    const iniciais = Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()]))
-    // sinal já pago na encomenda entra como a primeira forma de pagamento da primeira parte
-    const sinal = encomenda?.sinal
-    if (sinal?.valor > 0 && partes[0] && sinal.valor >= partes[0].total) {
-      // o sinal cobre a parte toda (se passou, a diferença é devolvida à cliente)
-      iniciais[partes[0].chave] = [{ forma: sinal.forma, valorTexto: '', parcelas: 1, sinal: true }]
-    } else if (sinal?.valor > 0 && partes[0]) {
-      iniciais[partes[0].chave] = [
-        { forma: sinal.forma, valorTexto: paraCampoMoeda(sinal.valor), parcelas: 1, sinal: true },
-        { forma: 'pix', valorTexto: paraCampoMoeda(arred(partes[0].total - sinal.valor)), parcelas: 1 },
-      ]
-    }
-    setPagamentosPor(iniciais)
+    setPagamentosPor(Object.fromEntries(partes.map((p) => [p.empresa_id, pagamentoInicial()])))
     setEstado((e) => ({ ...e, etapa: 'pagamento' }))
   }
 
-  function concluir() {
+  function mudarDesconto(texto) {
+    setDescontoTexto(descontoModo === 'percentual' ? filtroPercentual(texto) : filtroDinheiro(texto))
+    setAprovacao(null)
+    setPagamentosPor(Object.fromEntries(partes.map((p) => [p.empresa_id, pagamentoInicial()])))
+  }
+
+  async function aprovar() {
     setErro('')
-    if (vendaZerada) return setErro('O desconto zerou a venda. Para dar a peça de presente, use "Brinde" em Estoque → Ajuste e perda.')
+    const { data, error } = await supabase.rpc('pedir_aprovacao', { p_codigo: codigo })
+    setCodigo('')
+    if (error) return setErro(traduzirErro(error))
+    if (!data.ok) return setErro(data.erro)
+    setAprovacao(data.aprovacao)
+  }
+
+  async function concluir() {
+    setErro('')
+    if (descontoInvalido) return setErro('O desconto zerou a venda. Para dar a peça de presente, use "Brinde" em Estoque → Saída e correção.')
     if (!pagamentoFecha) return setErro('A soma das formas de pagamento precisa ser igual ao total de cada parte.')
-    let cliente_id = clienteId
+    setEnviando(true)
+
+    // cadastro rápido: a cliente é criada antes; se a venda não fechar, ela já fica escolhida
+    let clienteDaVenda = cliente
     const nomeNovo = limparTexto(cadastro?.nome)
     if (cadastro && nomeNovo) {
-      const erroCadastro = nomeNovo.length < 2 ? 'Informe o nome da cliente, ou cancele o cadastro.' : erroWhatsApp(dados.clientes, cadastro.whatsapp)
-      if (erroCadastro) return setErro(erroCadastro)
-      cliente_id = criarCliente({ nome: nomeNovo, whatsapp: formatarWhatsApp(cadastro.whatsapp) })
-      // se a venda não fechar (ex.: estoque), a cliente já fica escolhida e não é cadastrada de novo
-      setClienteId(cliente_id); setCadastro(null)
+      if (nomeNovo.length < 2) { setEnviando(false); return setErro('Informe o nome da cliente, ou cancele o cadastro.') }
+      if (!whatsappValido(cadastro.whatsapp)) { setEnviando(false); return setErro('WhatsApp incompleto: coloque o DDD e o número, como (11) 98888-7777.') }
+      const { data, error } = await supabase.from('clientes')
+        .insert({ nome: nomeNovo, whatsapp: numeroWhatsApp(cadastro.whatsapp) || null })
+        .select('id, nome, whatsapp').single()
+      if (error) {
+        setEnviando(false)
+        return setErro(error.code === '23505' ? 'Esse WhatsApp já é de uma cliente cadastrada. Busque por ela em vez de cadastrar de novo.' : traduzirErro(error))
+      }
+      clienteDaVenda = data
+      setCliente(data); setCadastro(null)
     }
-    const r = concluirVenda({
-      partes: partes.map((p) => ({
-        empresa_id: p.chave,
-        itens: p.itens.map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })),
-        desconto: p.desconto,
-        pagamentos: valoresPagamento(pagamentosPor[p.chave], p.total)
-          .filter((p) => p.valor > 0)
-          .map(({ forma, valor, parcelas }) => ({ forma, valor, parcelas: forma === 'cartao_credito' ? parcelas : 1 })),
-      })),
-      cliente_id, canal,
+
+    const { data, error } = await supabase.rpc('concluir_venda', {
+      p: {
+        cliente_id: clienteDaVenda?.id || null,
+        canal,
+        aprovacao,
+        partes: partes.map((p) => ({
+          empresa_id: p.empresa_id,
+          desconto: p.desconto,
+          itens: p.itens.map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })),
+          pagamentos: valoresPagamento(pagamentosPor[p.empresa_id] || pagamentoInicial(), p.total)
+            .filter((x) => x.valor > 0)
+            .map(({ forma, valor, parcelas }) => ({ forma, valor, parcelas: forma === 'cartao_credito' ? parcelas : 1 })),
+        })),
+      },
     })
-    if (r.erro) return setErro(encomenda ? `${r.erro} Dê entrada da peça no Estoque antes de entregar a encomenda.` : r.erro)
-    if (encomenda) {
-      atualizarEncomenda(encomenda.id, { status: 'entregue', entregue_em: new Date().toISOString(), vendas: r.vendas.map((v) => v.id) })
-      setEncomenda(null)
+    setEnviando(false)
+    if (error) {
+      if (error.code === 'P0002') setAprovacao(null)
+      await recarregar() // o estoque pode ter mudado
+      return setErro(traduzirErro(error))
     }
-    setResultado({ ids: r.vendas.map((v) => v.id), segundos: Math.max(1, Math.round((Date.now() - estado.inicio) / 1000)) })
+    setResultado({
+      vendas: data.map((v) => ({ ...v, desconto: partes.find((p) => p.empresa_id === v.empresa_id)?.desconto || 0 })),
+      itens: itens.map((i) => ({ descricao: `${i.linha.produto.nome} (${i.linha.nomeVariacao})`, quantidade: i.quantidade, preco_unitario: i.linha.preco })),
+      cliente: clienteDaVenda,
+      segundos: Math.max(1, Math.round((Date.now() - estado.inicio) / 1000)),
+    })
     setEstado((e) => ({ ...e, etapa: 'concluida' }))
+    recarregar()
   }
 
   function novaVenda() {
     setEstado(vazio())
-    setClienteId(null); setBuscaCliente(''); setCadastro(null); setCanal('loja')
-    setDescontoTexto(''); setDescontoModo('reais'); setAprovado(false)
+    setCliente(null); setBuscaCliente(''); setCadastro(null); setCanal('loja')
+    setDescontoTexto(''); setDescontoModo('reais'); setAprovacao(null); setCodigo('')
     setPagamentosPor({}); setResultado(null); setErro('')
   }
 
   // ---------------- Concluída ----------------
   if (etapa === 'concluida' && resultado) {
-    const vendas = resultado.ids.map((id) => dados.vendas.find((v) => v.id === id)).filter(Boolean)
-    const totalGeral = arred(vendas.reduce((s, v) => s + v.total, 0))
-    const cliente = clientePorId.get(vendas[0]?.cliente_id)
-    const recibo = [
-      "deMana's · recibo da sua compra",
-      ...vendas.flatMap((v) => v.itens.map((i) => {
-        const l = linhaPorId.get(i.variacao_id)
-        return `${i.quantidade}x ${l.produto.nome} (${l.nomeVariacao}) ${formatarMoeda(i.preco_unitario * i.quantidade)}`
-      })),
-      vendas.some((v) => v.desconto > 0) ? `Desconto: ${formatarMoeda(arred(vendas.reduce((s, v) => s + v.desconto, 0)))}` : null,
-      `Total: ${formatarMoeda(totalGeral)}`,
-      'Obrigada pela preferência! 🌹',
-    ].filter(Boolean).join('\n')
-    const linkWhats = linkWhatsApp(cliente?.whatsapp, recibo)
+    const totalGeral = arred(resultado.vendas.reduce((s, v) => s + Number(v.total), 0))
+    const linkWhats = linkWhatsApp(resultado.cliente?.whatsapp, textoRecibo(resultado))
 
     return (
       <div className="pagina pagina-estreita">
@@ -275,21 +304,17 @@ export default function NovaVenda() {
           <p className="concluida-total">{formatarMoeda(totalGeral)}</p>
           <p className="texto-suave"><Icone nome="relogio" tamanho={16} /> registrada em {resultado.segundos} segundos {resultado.segundos <= 30 ? '· dentro da meta de 30 s' : ''}</p>
           <ul className="lista partes-concluidas">
-            {vendas.map((v) => (
+            {resultado.vendas.map((v) => (
               <li key={v.id} className="linha-lista">
                 <span>
-                  <strong>{empresas[v.empresa_id].apelido} · venda nº {v.numero}</strong>
-                  <small>{v.pagamentos.map((p) => `${FORMAS_PAGAMENTO[p.forma]}${p.parcelas > 1 ? ` ${p.parcelas}x` : ''}`).join(' + ')} · {formatarMoeda(v.total)}</small>
+                  <strong>{empresas[v.empresa_id]?.apelido} · venda nº {v.numero}</strong>
+                  <small>{formatarMoeda(v.total)}</small>
                 </span>
-                {!v.nota
-                  ? <Selo>Sem nota (MEI)</Selo>
-                  : v.nota.status === 'enviando'
-                    ? <span className="selos"><span className="pulso" /> Emitindo nota…</span>
-                    : <Selo tom="ambar">Nota emitida · teste</Selo>}
+                {empresas[v.empresa_id]?.tipo === 'me' ? <Selo tom="ambar">Nota a emitir</Selo> : <Selo>Sem nota (MEI)</Selo>}
               </li>
             ))}
           </ul>
-          <p className="texto-suave pequeno">A cliente não espera a nota: a venda já está registrada e o estoque já foi baixado.</p>
+          <p className="texto-suave pequeno">A venda está registrada e o estoque já foi baixado. A emissão da nota fiscal chega na etapa da Nota fiscal.</p>
           <div className="acoes-coluna">
             <a href={linkWhats} target="_blank" rel="noreferrer" className="botao botao-secundario botao-grande"><Icone nome="conversa" /> Enviar recibo por WhatsApp</a>
             <button className="botao botao-principal botao-grande" onClick={novaVenda}><Icone nome="somar" /> Nova venda</button>
@@ -301,12 +326,6 @@ export default function NovaVenda() {
 
   // ---------------- Pagamento ----------------
   if (etapa === 'pagamento') {
-    const clientesEncontrados = buscaCliente.trim()
-      ? dados.clientes.filter((c) => !c.removida && normalizar(`${c.nome} ${c.whatsapp}`).includes(normalizar(buscaCliente))).slice(0, 5)
-      : []
-    const cliente = clientePorId.get(clienteId)
-    const formas = Object.entries(FORMAS_PAGAMENTO).filter(([f]) => f !== 'crediario' || config.aceitaCrediario)
-
     return (
       <div className="pagina pagina-estreita com-rodape-fixo">
         <button className="botao-link voltar" onClick={() => setEstado((e) => ({ ...e, etapa: 'itens' }))}><Icone nome="voltar" tamanho={18} /> Voltar aos itens</button>
@@ -316,8 +335,8 @@ export default function NovaVenda() {
           <h2>Cliente <small className="texto-suave">(opcional)</small></h2>
           {cliente ? (
             <div className="seletor-escolhido">
-              <div><strong>{cliente.nome}</strong><small>{cliente.whatsapp}</small></div>
-              <button className="botao-link" onClick={() => setClienteId(null)}>Trocar</button>
+              <div><strong>{cliente.nome}</strong><small>{cliente.whatsapp ? formatarWhatsApp(cliente.whatsapp) : 'sem WhatsApp'}</small></div>
+              <button className="botao-link" onClick={() => setCliente(null)}>Trocar</button>
             </div>
           ) : cadastro ? (
             <div className="grade-campos">
@@ -331,11 +350,11 @@ export default function NovaVenda() {
               {clientesEncontrados.length > 0 && (
                 <ul className="lista-opcoes">
                   {clientesEncontrados.map((c) => (
-                    <li key={c.id}><button onClick={() => { setClienteId(c.id); setBuscaCliente('') }}><span><strong>{c.nome}</strong><small>{c.whatsapp}</small></span></button></li>
+                    <li key={c.id}><button onClick={() => { setCliente(c); setBuscaCliente('') }}><span><strong>{c.nome}</strong><small>{c.whatsapp ? formatarWhatsApp(c.whatsapp) : 'sem WhatsApp'}</small></span></button></li>
                   ))}
                 </ul>
               )}
-              <button className="botao-link" onClick={() => setCadastro({ nome: buscaCliente.slice(0, TAMANHO.nome), whatsapp: '' })}><Icone nome="somar" tamanho={16} /> Cadastro rápido</button>
+              <button className="botao-link" onClick={() => setCadastro({ nome: /\d/.test(buscaCliente) ? '' : buscaCliente.slice(0, TAMANHO.nome), whatsapp: /\d/.test(buscaCliente) ? filtroTelefone(buscaCliente) : '' })}><Icone nome="somar" tamanho={16} /> Cadastro rápido</button>
             </>
           )}
         </section>
@@ -353,50 +372,38 @@ export default function NovaVenda() {
           <h2>Desconto</h2>
           <div className="linha-campos">
             <div className="segmentado compacto">
-              <button className={descontoModo === 'reais' ? 'ativo' : ''} onClick={() => setDescontoModo('reais')}>R$</button>
-              <button className={descontoModo === 'percentual' ? 'ativo' : ''} onClick={() => { setDescontoModo('percentual'); setDescontoTexto(filtroPercentual(descontoTexto)) }}>%</button>
+              <button className={descontoModo === 'reais' ? 'ativo' : ''} onClick={() => { setDescontoModo('reais'); setAprovacao(null) }}>R$</button>
+              <button className={descontoModo === 'percentual' ? 'ativo' : ''} onClick={() => { setDescontoModo('percentual'); setDescontoTexto(filtroPercentual(descontoTexto)); setAprovacao(null) }}>%</button>
             </div>
-            <input className="campo-solto" inputMode="decimal" placeholder="0" value={descontoTexto} onChange={(e) => { setDescontoTexto(descontoModo === 'percentual' ? filtroPercentual(e.target.value) : filtroDinheiro(e.target.value)); setAprovado(false); setPagamentosPor(Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()]))) }} aria-label="Desconto" />
+            <input className="campo-solto" inputMode="decimal" placeholder="0" value={descontoTexto} onChange={(e) => mudarDesconto(e.target.value)} aria-label="Desconto" />
           </div>
-          {descontoPassou && <p className="texto-alerta pequeno">O desconto passa do valor da compra ({formatarMoeda(subtotal)}).</p>}
-          {vendaZerada && !descontoPassou && <Aviso tom="vinho">O desconto zerou a venda. Para dar a peça de presente, use "Brinde" em Estoque → Ajuste e perda.</Aviso>}
-          {desconto > 0 && !descontoPassou && <p className="texto-suave pequeno">{formatarMoeda(desconto)} · {formatarPercentual(percentual(desconto, subtotal))} do valor{duasEmpresas && ', dividido entre os dois CNPJs'}</p>}
-          {!ehProprietaria && <p className="texto-suave pequeno">Seu limite de desconto: {config.limiteDescontoVendedora}%</p>}
-          {precisaAprovacao && (
-            <Aviso tom="vinho">
-              Desconto acima do limite. Precisa da aprovação da proprietária.{' '}
-              <button className="botao-link" onClick={() => setAprovado(true)}>Proprietária aprovou</button>
-              <br /><small>Na versão real, ela confirma com a senha dela.</small>
-            </Aviso>
+          {descontoInvalido && <Aviso tom="vinho">O desconto zera a venda. Para dar a peça de presente, use "Brinde" em Estoque → Saída e correção.</Aviso>}
+          {desconto > 0 && !descontoInvalido && <p className="texto-suave pequeno">{formatarMoeda(desconto)} · {formatarPercentual(percentual(desconto, subtotal))} do valor{duasEmpresas && ', dividido entre os dois CNPJs'}</p>}
+          {!admin && <p className="texto-suave pequeno">Seu limite de desconto: {limite}%</p>}
+          {!admin && aprovacao && <Aviso tom="oliva">Desconto aprovado pela proprietária.</Aviso>}
+          {precisaAprovacao && !descontoInvalido && (
+            <div className="formulario">
+              <Aviso tom="ambar">Desconto acima do seu limite. A proprietária digita o código de aprovação aqui.</Aviso>
+              <div className="linha-campos">
+                <input className="campo-solto" type="password" autoComplete="off" value={codigo} onChange={(e) => setCodigo(e.target.value)} maxLength={TAMANHO.codigo} aria-label="Código de aprovação" placeholder="Código de aprovação" />
+                <button className="botao botao-secundario" onClick={aprovar} disabled={!codigo}>Aprovar</button>
+              </div>
+            </div>
           )}
         </section>
 
-        {duasEmpresas && (
-          <Aviso tom="ambar">Esta venda tem peças dos dois CNPJs. Cobre cada parte na maquininha do seu CNPJ.</Aviso>
-        )}
-        {encomenda?.sinal?.valor > 0 && (
-          <Aviso tom={encomenda.sinal.valor > (partes[0]?.total || 0) ? 'ambar' : 'oliva'}>
-            A cliente já pagou {formatarMoeda(encomenda.sinal.valor)} de sinal ({FORMAS_PAGAMENTO[encomenda.sinal.forma]}).{' '}
-            {encomenda.sinal.valor < (partes[0]?.total || 0)
-              ? 'Ele já está na primeira forma de pagamento: cobre só o restante.'
-              : encomenda.sinal.valor === partes[0]?.total
-                ? 'O sinal paga esta parte inteira: não há nada a cobrar nela.'
-                : `O sinal passou do valor desta parte: devolva ${formatarMoeda(arred(encomenda.sinal.valor - (partes[0]?.total || 0)))} à cliente.`}
-          </Aviso>
-        )}
+        {duasEmpresas && <Aviso tom="ambar">Esta venda tem peças dos dois CNPJs. Cobre cada parte na maquininha do seu CNPJ.</Aviso>}
         {partes.map((p) => (
           <BlocoPagamento
-            key={p.chave}
-            titulo={duasEmpresas ? `${empresas[p.chave].apelido} · maquininha da ${empresas[p.chave].dona}` : 'Forma de pagamento'}
+            key={p.empresa_id}
+            titulo={duasEmpresas ? `${empresas[p.empresa_id]?.apelido} · maquininha da ${empresas[p.empresa_id]?.dona}` : 'Forma de pagamento'}
             subtitulo={duasEmpresas
-              ? `${p.itens.map((i) => i.linha.produto.nome).join(', ')}${emiteNota(config, p.chave) ? ' · sai com nota' : ' · sem nota (MEI)'}`
-              : `${empresas[p.chave].apelido} · maquininha da ${empresas[p.chave].dona}`}
+              ? `${p.itens.map((i) => linhaPorId.get(i.variacao_id)?.produto.nome).join(', ')}${empresas[p.empresa_id]?.tipo === 'me' ? ' · sai com nota' : ' · sem nota (MEI)'}`
+              : `${empresas[p.empresa_id]?.apelido} · maquininha da ${empresas[p.empresa_id]?.dona}`}
             total={p.total}
-            pagamentos={pagamentosPor[p.chave] || pagamentoInicial()}
-            setPagamentos={(lista) => setPagamentosPor((atual) => ({ ...atual, [p.chave]: lista }))}
-            formas={formas}
-            taxas={taxasDe(config, p.chave)}
-            podeVerCustos={podeVerCustos}
+            pagamentos={pagamentosPor[p.empresa_id] || pagamentoInicial()}
+            setPagamentos={(lista) => setPagamentosPor((atual) => ({ ...atual, [p.empresa_id]: lista }))}
+            taxas={podeVerCustos ? taxas[p.empresa_id] : null}
           />
         ))}
 
@@ -405,10 +412,10 @@ export default function NovaVenda() {
         <footer className="rodape-fixo">
           <div className="rodape-total">
             <small>{desconto > 0 ? `${formatarMoeda(subtotal)} − ${formatarMoeda(desconto)}` : textoPecas}</small>
-            <strong>{formatarMoeda(total)}</strong>
+            <strong>{formatarMoeda(descontoInvalido ? subtotal : total)}</strong>
           </div>
-          <button className="botao botao-principal botao-grande" disabled={precisaAprovacao || !pagamentoFecha || vendaZerada || descontoPassou} onClick={concluir}>
-            <Icone nome="confirmar" /> Concluir venda
+          <button className="botao botao-principal botao-grande" disabled={enviando || precisaAprovacao || !pagamentoFecha || descontoInvalido} onClick={concluir}>
+            <Icone nome="confirmar" /> {enviando ? 'Registrando…' : 'Concluir venda'}
           </button>
         </footer>
       </div>
@@ -418,38 +425,34 @@ export default function NovaVenda() {
   // ---------------- Itens ----------------
   return (
     <div className="pagina pagina-estreita com-rodape-fixo">
-      <header className="pagina-topo"><h1>{encomenda ? 'Entregar encomenda' : 'Nova venda'}</h1></header>
-      {encomenda && (
-        <Aviso tom="oliva">
-          Encomenda de <strong>{clientePorId.get(encomenda.cliente_id)?.nome}</strong>. As peças já estão na venda.
-          {encomenda.itens.some((i) => i.descricao) && ' Peças descritas à mão precisam ser cadastradas e adicionadas pela busca.'}
-        </Aviso>
-      )}
+      <header className="pagina-topo"><h1>Nova venda</h1></header>
+      {veioDeEncomenda && <Aviso tom="ambar">As encomendas ainda são de exemplo (até a etapa de Clientes). Para entregar, faça a venda normal pela busca.</Aviso>}
 
       <div className="busca-venda">
-        <CampoBusca grande valor={busca} aoMudar={setBusca} placeholder="Buscar produto, cor, tamanho ou código" autoFocus />
-        <button className="botao-icone botao-camera" title="Ler código de barras" aria-label="Ler código de barras pela câmera" onClick={() => setErro('Na versão real, este botão abre a câmera do celular para ler o código de barras.')}>
+        <CampoBusca grande valor={busca} aoMudar={setBusca} aoEnter={() => busca.trim() && (resultados.length === 1 ? adicionar(resultados[0]) : lerCodigo(busca))} placeholder="Buscar produto, cor, tamanho ou código" autoFocus />
+        <button className="botao-icone botao-camera" title="Ler código de barras" aria-label="Ler código de barras pela câmera"
+          onClick={() => (temLeitorCamera() ? setCamera(true) : setErro('Neste celular o navegador não lê código pela câmera. Use o leitor de código ou digite o nome (no Android, use o Chrome).'))}>
           <Icone nome="camera" />
         </button>
       </div>
+      {camera && <LeitorCamera aoFechar={() => setCamera(false)} aoLer={(c) => { setCamera(false); lerCodigo(c) }} />}
 
       {busca.trim() ? (
         <ul className="lista-opcoes resultados-venda">
           {resultados.length === 0 && <li className="texto-suave recuo">Nada encontrado para "{busca}".</li>}
           {resultados.map((l) => (
             <li key={l.id} className="resultado-com-acao">
-              <button onClick={() => adicionar(l)} disabled={!config.permitirEstoqueNegativo && l.saldo <= 0}>
+              <button onClick={() => adicionar(l)} disabled={!permitirNegativo && l.saldo <= 0}>
                 <span><strong>{l.produto.nome}</strong><small>{l.nomeVariacao} · {empresas[l.produto.empresa_id]?.apelido}</small></span>
                 <span className="resultado-direita">
                   <strong>{formatarMoeda(l.preco)}</strong>
-                  <small className={l.saldo <= 0 ? 'texto-alerta' : 'texto-suave'}>{l.saldo <= 0 ? 'sem estoque' : `${l.saldo} em estoque`}</small>
+                  <small className={l.saldo <= 0 ? 'texto-alerta' : 'texto-suave'}>{l.saldo <= 0 ? 'sem estoque' : l.produto.tipo === 'kit' ? `dá para montar ${l.saldo}` : `${l.saldo} em estoque`}</small>
                 </span>
               </button>
-              {l.saldo <= 0 && <Link className="botao botao-secundario" to={`/encomendas?nova=${l.id}`}>Encomendar</Link>}
             </li>
           ))}
         </ul>
-      ) : carrinho.length === 0 && (
+      ) : carrinho.length === 0 && atalhos.length > 0 && (
         <section className="atalhos">
           <h2 className="texto-suave pequeno">Mais vendidos · toque para adicionar</h2>
           <div className="grade-atalhos">
@@ -485,6 +488,7 @@ export default function NovaVenda() {
         </section>
       )}
       {duasEmpresas && <p className="texto-suave pequeno">Peças dos dois CNPJs: no pagamento, o sistema separa quanto cobrar em cada maquininha.</p>}
+      {permitirNegativo && <p className="texto-suave pequeno">"Vender sem estoque" está ligado em Configurações: a venda passa mesmo quando o sistema diz que a peça acabou.</p>}
 
       {itens.length > 0 && (
         <footer className="rodape-fixo">
@@ -495,8 +499,13 @@ export default function NovaVenda() {
           <button className="botao botao-principal botao-grande" onClick={irParaPagamento}>Pagamento <Icone nome="seguir" /></button>
         </footer>
       )}
-      {itens.length === 0 && !busca && <p className="texto-suave pequeno recuo">Dica: digite parte do nome e a cor, por exemplo "aurora preto 42".</p>}
+      {itens.length === 0 && !busca && (
+        <p className="texto-suave pequeno recuo">
+          {linhas.length ? 'Dica: digite parte do nome e a cor, por exemplo "aurora preto 42", ou leia o código de barras.' : <>Ainda não há produtos cadastrados. Comece por <Link to="/produtos">Produtos</Link>.</>}
+        </p>
+      )}
       <p className="texto-suave pequeno recuo"><Link to="/vendas">Ver vendas anteriores</Link></p>
     </div>
   )
 }
+

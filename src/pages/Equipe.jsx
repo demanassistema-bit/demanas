@@ -6,7 +6,7 @@ import { Aviso, Selo } from '../components/ui'
 import { TAMANHO } from '../lib/limites'
 
 const LINK_CONVITE = 'https://supabase.com/dashboard/project/kcrhewzxpklwevctqosx/auth/users'
-const AREAS = { financeiro: 'Financeiro', fiscal: 'Nota fiscal' }
+const AREAS = { financeiro: 'Financeiro', fiscal: 'Nota fiscal', aprovacao: 'Aprovação' }
 
 // Só as proprietárias: quem é da equipe, o que cada uma pode ver e os códigos das áreas protegidas
 export default function Equipe() {
@@ -106,8 +106,11 @@ export default function Equipe() {
       </section>
 
       <section className="cartao secao">
-        <h2>Códigos das áreas protegidas</h2>
-        <p className="texto-suave pequeno">Cada área tem seu código. Trocar o código tranca a área para todo mundo que estava dentro.</p>
+        <h2>Códigos</h2>
+        <p className="texto-suave pequeno">
+          Cada área tem seu código. Trocar o código tranca a área para todo mundo que estava dentro.
+          {' '}O código de <strong>Aprovação</strong> é o que a proprietária digita no celular da vendedora para liberar desconto acima do limite, cancelamento e devolução. Ele vale para uma ação só.
+        </p>
         {Object.entries(AREAS).map(([area, nome]) => (
           <DefinirCodigo key={area} area={area} nome={nome} criado={permissoes.codigos_criados?.includes(area)} aoSalvar={atualizarPermissoes} />
         ))}

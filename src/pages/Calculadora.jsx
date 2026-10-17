@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
+import { useCatalogo } from '../contexts/CatalogoContext'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { diasDesde } from '../lib/datas'
 import { filtroDinheiro, filtroPercentual, LIMITE, TAMANHO } from '../lib/limites'
-import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem, taxasDe } from '../demo/regras'
+import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem } from '../demo/regras'
 import Icone from '../components/Icone'
 import { Aviso, SeletorVariacao } from '../components/ui'
 
@@ -26,11 +28,10 @@ export default function Calculadora() {
   const config = dados.config
   const calc = config.calculadora
   // cada CNPJ tem sua maquininha: a calculadora usa as taxas do CNPJ escolhido
-  const empresaCalc = config.empresas[calc.empresa] ? calc.empresa : 'day'
-  const taxas = taxasDe(config, empresaCalc)
-  const salvarTaxa = (chave, n) => atualizarConfig({
-    empresas: { ...config.empresas, [empresaCalc]: { ...config.empresas[empresaCalc], taxas: { ...taxas, [chave]: n } } },
-  })
+  // (as taxas ficam no banco, em Configurações, as mesmas que entram em cada venda)
+  const catalogo = useCatalogo()
+  const empresaCalc = catalogo.empresas[calc.empresa] ? calc.empresa : 'day'
+  const taxas = catalogo.taxas[empresaCalc] || {}
 
   // Faturamento médio dos últimos 3 meses, para sugerir
   const faturamentoMedio = useMemo(() => arred(dados.vendas
@@ -170,19 +171,19 @@ export default function Calculadora() {
       <section className="cartao secao">
         <h2>4. Taxas do cartão e do banco</h2>
         <div className="segmentado">
-          {Object.entries(config.empresas).map(([id, e]) => (
+          {Object.entries(catalogo.empresas).map(([id, e]) => (
             <button key={id} className={empresaCalc === id ? 'ativo' : ''} onClick={() => marcarCalc({ empresa: id })}>Maquininha {e.apelido}</button>
           ))}
         </div>
         <div className="grade-campos">
           {FORMAS.map((f) => (
-            <label key={f.chave} className="campo">
-              <span>{f.nome} (%)</span>
-              <input inputMode="decimal" value={textos[`taxa_${empresaCalc}_${f.chave}`] ?? campo(taxas[f.chave])} onChange={(e) => mudarPercentual(`taxa_${empresaCalc}_${f.chave}`, e.target.value, (n) => salvarTaxa(f.chave, n))} />
-            </label>
+            <div key={f.chave} className="campo">
+              <span>{f.nome}</span>
+              <strong>{formatarPercentual(taxas[f.chave] || 0, 2)}</strong>
+            </div>
           ))}
         </div>
-        <p className="texto-suave pequeno">Tarifa mensal do banco ou da maquininha entra nos custos fixos, acima.</p>
+        <p className="texto-suave pequeno">As taxas são as mesmas que entram em cada venda. Para mudar, vá em <Link to="/configuracoes">Configurações</Link>. Tarifa mensal do banco ou da maquininha entra nos custos fixos, acima.</p>
       </section>
 
       <section className="cartao secao">

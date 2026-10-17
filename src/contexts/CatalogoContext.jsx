@@ -7,9 +7,10 @@ import { useAuth } from './AuthContext'
 // Catálogo de verdade (Etapa 2): CNPJs, categorias, marcas, fornecedores, produtos e variações.
 // O custo só vem para quem pode ver custos (o banco não entrega para os outros).
 // Estoque (Etapa 3): os saldos vêm do livro do estoque, somados pelo banco.
+// Vendas (Etapa 4): parâmetros de venda e, para quem vê custos, as taxas da maquininha.
 export const CatalogoContext = createContext(null)
 
-const vazio = { empresas: {}, categorias: [], marcas: [], fornecedores: [], perfisFiscais: {}, produtos: [], kitItens: [], custos: new Map(), baldes: [] }
+const vazio = { empresas: {}, categorias: [], marcas: [], fornecedores: [], perfisFiscais: {}, produtos: [], kitItens: [], custos: new Map(), baldes: [], parametros: {}, taxas: {} }
 
 export function CatalogoProvider({ children }) {
   const { session, permissoes } = useAuth()
@@ -20,7 +21,7 @@ export function CatalogoProvider({ children }) {
 
   const recarregar = useCallback(async () => {
     if (!session) return
-    const [emp, cat, mar, forn, fisc, prod, kits, cust, est] = await Promise.all([
+    const [emp, cat, mar, forn, fisc, prod, kits, cust, est, par, tax] = await Promise.all([
       supabase.from('empresas').select('*').order('id'),
       supabase.from('categorias').select('*').order('nome'),
       supabase.from('marcas').select('*').order('nome'),
@@ -30,8 +31,10 @@ export function CatalogoProvider({ children }) {
       supabase.from('kit_itens').select('*'),
       podeVerCustos ? supabase.from('custos_variacao').select('variacao_id, custo_medio') : Promise.resolve({ data: [] }),
       supabase.from('estoque_por_lote').select('*'),
+      supabase.from('parametros').select('chave, valor'),
+      podeVerCustos ? supabase.from('taxas_pagamento').select('empresa_id, tipo, percentual') : Promise.resolve({ data: [] }),
     ])
-    const falha = [emp, cat, mar, forn, fisc, prod, kits, cust, est].find((r) => r.error)
+    const falha = [emp, cat, mar, forn, fisc, prod, kits, cust, est, par, tax].find((r) => r.error)
     if (falha) {
       setErro(traduzirErro(falha.error))
       setCarregando(false)
@@ -51,6 +54,9 @@ export function CatalogoProvider({ children }) {
       kitItens: kits.data,
       custos: new Map(cust.data.map((c) => [c.variacao_id, Number(c.custo_medio)])),
       baldes: est.data.filter((b) => b.saldo !== 0),
+      parametros: Object.fromEntries(par.data.map((p) => [p.chave, p.valor])),
+      // { day: { pix: 0, debito: 1.99, ... }, fe: {...} }
+      taxas: tax.data.reduce((acc, x) => ({ ...acc, [x.empresa_id]: { ...acc[x.empresa_id], [x.tipo]: Number(x.percentual) } }), {}),
     })
     setCarregando(false)
   }, [session, podeVerCustos])
@@ -160,6 +166,11 @@ export function CatalogoProvider({ children }) {
       p_variacao: variacaoId, p_tipo: tipo, p_quantidade: quantidade, p_motivo: motivo, p_lote: loteId || null,
     })),
     corrigirSaldo: (variacaoId, contado, motivo) => acao(supabase.rpc('corrigir_saldo', { p_variacao: variacaoId, p_contado: contado, p_motivo: motivo })),
+
+    // Vendas: parâmetros, taxas e categoria de higiene (só proprietárias)
+    salvarParametro: (chave, valor) => acao(supabase.from('parametros').upsert({ chave, valor })),
+    salvarTaxa: (empresaId, tipo, percentual) => acao(supabase.from('taxas_pagamento').update({ percentual }).eq('empresa_id', empresaId).eq('tipo', tipo)),
+    marcarHigiene: (categoriaId, naoVolta) => acao(supabase.from('categorias').update({ nao_volta_ao_estoque: naoVolta }).eq('id', categoriaId)),
   }
 
   return <CatalogoContext.Provider value={valor}>{children}</CatalogoContext.Provider>
