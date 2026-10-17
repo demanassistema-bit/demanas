@@ -22,7 +22,8 @@ export default function App() {
 
   if (carregando) return <div className="carregando"><Logo altura={56} /></div>
   if (!session) return <Login />
-  if (precisaDefinirSenha) return <DefinirSenha />
+  // convite, "esqueci a senha" ou login criado com senha provisória
+  if (precisaDefinirSenha || perfil?.senha_provisoria) return <DefinirSenha />
 
   if (!perfil?.ativo) {
     return (

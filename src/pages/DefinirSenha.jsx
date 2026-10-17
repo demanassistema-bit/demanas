@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase, traduzirErro } from '../lib/supabase'
+import { supabase, traduzirErro, linkDeAcesso } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/Logo'
 import { Aviso } from '../components/ui'
@@ -22,7 +22,7 @@ export default function DefinirSenha() {
     setEnviando(true)
     setErro('')
     const { error } = await supabase.auth.updateUser({ password: senha })
-    if (!error && limparTexto(nome) !== perfil?.nome) await atualizarPerfil({ nome: limparTexto(nome) })
+    if (!error) await atualizarPerfil({ nome: limparTexto(nome), senha_provisoria: false })
     setEnviando(false)
     if (error) setErro(traduzirErro(error))
     else concluirDefinicaoSenha()
@@ -33,6 +33,7 @@ export default function DefinirSenha() {
       <form className="cartao cartao-acesso" onSubmit={salvar}>
         <Logo altura={64} className="logo-login" />
         <h1>Crie sua senha</h1>
+        {perfil?.senha_provisoria && linkDeAcesso.tipo !== 'invite' && <p className="texto-suave pequeno">Você entrou com uma senha provisória. Crie agora a sua: só você vai saber.</p>}
         <p className="texto-suave">{session?.user?.email}</p>
         <label className="campo">
           <span>Como quer ser chamada?</span>
