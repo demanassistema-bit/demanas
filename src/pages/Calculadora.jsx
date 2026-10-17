@@ -4,7 +4,7 @@ import { useCatalogo } from '../contexts/CatalogoContext'
 import { supabase, traduzirErro } from '../lib/supabase'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { filtroDinheiro, filtroPercentual, LIMITE, TAMANHO } from '../lib/limites'
-import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem } from '../demo/regras'
+import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem } from '../lib/precos'
 import Icone from '../components/Icone'
 import { Aviso, SeletorVariacao } from '../components/ui'
 

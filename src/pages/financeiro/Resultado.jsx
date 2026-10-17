@@ -3,7 +3,7 @@ import { supabase, traduzirErro } from '../../lib/supabase'
 import { formatarMoeda, formatarPercentual } from '../../lib/moeda'
 import { formatarData, hojeISO, NOMES_MESES, paraISO } from '../../lib/datas'
 import { CATEGORIAS_DESPESA, fluxoSemanas } from '../../lib/financeiro'
-import { percentual } from '../../demo/regras'
+import { percentual } from '../../lib/precos'
 import { Aviso } from '../../components/ui'
 
 export default function Resultado() {

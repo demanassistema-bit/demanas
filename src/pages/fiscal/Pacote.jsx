@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { arred, formatarMoeda, FORMAS_PAGAMENTO } from '../../lib/moeda'
+import { arred, formatarMoeda } from '../../lib/moeda'
 import { diaDe, formatarDataHora, NOMES_MESES, paraISO } from '../../lib/datas'
+import { NOMES_FORMAS } from '../../lib/vendas'
+import { textoCSV } from '../../lib/relatorios'
 import Icone from '../../components/Icone'
 import { Aviso, Metrica } from '../../components/ui'
 import { NOMES_STATUS, numeroNota, useNotas } from './comum'
 
 function baixarCSV(nome, linhas) {
-  const texto = linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')
-  const url = URL.createObjectURL(new Blob(['﻿' + texto], { type: 'text/csv;charset=utf-8' }))
+  const url = URL.createObjectURL(new Blob([`﻿${textoCSV(linhas)}`], { type: 'text/csv;charset=utf-8' }))
   const a = document.createElement('a')
   a.href = url
   a.download = nome
@@ -15,28 +16,33 @@ function baixarCSV(nome, linhas) {
   URL.revokeObjectURL(url)
 }
 
-// Pacote mensal da contadora: na versão real, um .zip com todos os XMLs + este resumo
+// Pacote mensal da contadora: resumo, planilha de todas as notas e os XMLs (quando o serviço de verdade estiver ligado)
 export default function Pacote() {
-  const notas = useNotas()
+  const { notas, erro } = useNotas()
   const agora = new Date()
   const meses = [-1, 0, -2].map((m) => {
     const d = new Date(agora.getFullYear(), agora.getMonth() + m, 1)
     return { chave: paraISO(d).slice(0, 7), nome: NOMES_MESES[d.getMonth()] }
   })
   const [mes, setMes] = useState(meses[0].chave)
-  const doMes = notas.filter((n) => diaDe(n.venda.data).startsWith(mes))
+  if (!notas) return <div className="calculadora">{erro ? <Aviso tom="vinho">{erro}</Aviso> : <p className="texto-suave">Carregando…</p>}</div>
+
+  // a nota conta no mês da emissão (ou da venda, se ainda não saiu)
+  const doMes = notas.filter((n) => diaDe(n.emitida_em || n.criado_em).startsWith(mes) && n.status !== 'descartada')
   const autorizadas = doMes.filter((n) => n.status === 'autorizada')
-  const pendentes = doMes.filter((n) => n.status === 'pendente' || n.status === 'enviando')
+  const pendentes = doMes.filter((n) => !['autorizada', 'cancelada'].includes(n.status))
   const canceladas = doMes.filter((n) => n.status === 'cancelada')
-  const total = arred(autorizadas.reduce((s, n) => s + n.venda.total, 0))
+  const total = arred(autorizadas.reduce((s, n) => s + n.valor_total, 0))
   const porForma = {}
-  for (const n of autorizadas) for (const p of n.venda.pagamentos) porForma[p.forma] = arred((porForma[p.forma] || 0) + p.valor)
+  for (const n of autorizadas) for (const p of n.documento.pagamentos) porForma[p.forma] = arred((porForma[p.forma] || 0) + Number(p.valor))
+  const comXml = doMes.filter((n) => n.url_xml)
   const nomeMes = meses.find((m) => m.chave === mes).nome
 
   function baixar() {
     baixarCSV(`demanas-notas-${mes}.csv`, [
-      ['NFC-e', 'Série', 'Data', 'Venda', 'Situação', 'Valor'],
-      ...[...doMes].reverse().map((n) => [numeroNota(n.numero), n.serie, formatarDataHora(n.venda.data), n.venda.numero, NOMES_STATUS[n.status], String(n.venda.total).replace('.', ',')]),
+      ['NFC-e', 'Série', 'Data', 'Venda', 'Situação', 'Valor', 'CPF', 'Chave de acesso', 'Protocolo', 'XML'],
+      ...[...doMes].reverse().map((n) => [numeroNota(n.numero), n.serie, formatarDataHora(n.emitida_em || n.criado_em), n.vendas?.numero,
+        NOMES_STATUS[n.status], n.valor_total, n.documento.consumidor?.cpf || '', n.chave || '', n.protocolo || '', n.url_xml || '']),
     ])
   }
 
@@ -51,23 +57,32 @@ export default function Pacote() {
       <section className="grade-metricas">
         <Metrica rotulo="Notas autorizadas" valor={autorizadas.length} detalhe={formatarMoeda(total)} />
         <Metrica rotulo="Canceladas" valor={canceladas.length} />
-        <Metrica rotulo="Pendentes" valor={pendentes.length} />
+        <Metrica rotulo="Pendentes ou na fila" valor={pendentes.length} />
       </section>
 
-      {pendentes.length > 0 && <Aviso tom="vinho">Há {pendentes.length} {pendentes.length === 1 ? 'nota pendente' : 'notas pendentes'} em {nomeMes}. Resolva antes de mandar o pacote para a contadora.</Aviso>}
+      {pendentes.length > 0 && <Aviso tom="vinho">Há {pendentes.length} {pendentes.length === 1 ? 'nota pendente ou na fila' : 'notas pendentes ou na fila'} em {nomeMes}. Resolva antes de mandar o pacote para a contadora.</Aviso>}
 
       <section className="cartao secao">
         <h2>Pacote de {nomeMes} para a contadora</h2>
         <table className="tabela">
           <tbody>
             {Object.entries(porForma).sort((a, b) => b[1] - a[1]).map(([f, v]) => (
-              <tr key={f}><th scope="row">{FORMAS_PAGAMENTO[f]}</th><td>{formatarMoeda(v)}</td></tr>
+              <tr key={f}><th scope="row">{NOMES_FORMAS[f] || f}</th><td>{formatarMoeda(v)}</td></tr>
             ))}
             <tr className="linha-total"><th scope="row">Total autorizado</th><td>{formatarMoeda(total)}</td></tr>
           </tbody>
         </table>
-        <button className="botao botao-principal botao-grande" onClick={baixar}><Icone nome="baixar" /> Baixar resumo de {nomeMes}</button>
-        <p className="texto-suave pequeno">Na demonstração, sai uma planilha com todas as notas do mês. Na versão real, vem junto um arquivo com todos os XMLs autorizados e cancelados, guardados por 5 anos. Dá para mandar por e-mail para a contadora em um clique.</p>
+        <button className="botao botao-principal botao-grande" onClick={baixar} disabled={!doMes.length}><Icone nome="baixar" /> Baixar planilha de {nomeMes}</button>
+        {comXml.length > 0 ? (
+          <details className="perfil-fiscal">
+            <summary><strong>XMLs do mês ({comXml.length})</strong></summary>
+            <ul className="lista-simples">
+              {comXml.map((n) => <li key={n.id}><a href={n.url_xml} target="_blank" rel="noreferrer">NFC-e {numeroNota(n.numero)}</a></li>)}
+            </ul>
+          </details>
+        ) : (
+          <p className="texto-suave pequeno">No teste simulado não há XML (a nota não existe na SEFAZ). Com o serviço de emissão contratado, os XMLs autorizados e cancelados ficam guardados lá por 5 anos e aparecem aqui.</p>
+        )}
       </section>
     </div>
   )

@@ -6,7 +6,7 @@ import { arred, formatarMoeda, formatarPercentual, CANAIS } from '../lib/moeda'
 import { formatarData, hojeISO, paraISO, somarDias } from '../lib/datas'
 import { NOMES_FORMAS } from '../lib/vendas'
 import { analisarEstoque, curvaABC, margem, textoCSV, valorEstoque } from '../lib/relatorios'
-import { percentual } from '../demo/regras'
+import { percentual } from '../lib/precos'
 import Icone from '../components/Icone'
 import { Aviso, Metrica, Selo, Vazio } from '../components/ui'
 

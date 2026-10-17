@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useDemo } from '../demo/DemoContext'
 import { lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { filtroInteiro, filtroPercentual, limparTexto, TAMANHO } from '../lib/limites'
 import { TIPOS_TAXA } from '../lib/vendas'
-import { BotaoPerigo } from '../components/Modal'
 import { useCatalogo } from '../contexts/CatalogoContext'
 import { Aviso } from '../components/ui'
 
@@ -20,11 +18,9 @@ function Interruptor({ ligado, aoMudar, children, decisao, disabled }) {
 }
 
 export default function Configuracoes() {
-  const { restaurar } = useDemo()
   const cat = useCatalogo()
   const { empresas, parametros, categorias } = cat
   const [erro, setErro] = useState('')
-  const [restaurado, setRestaurado] = useState(false)
   const executar = async (promessa) => { const r = await promessa; setErro(r?.erro || '') }
 
   return (
@@ -95,13 +91,6 @@ export default function Configuracoes() {
         </ul>
       </section>
 
-      <section className="cartao secao">
-        <h2>Dados de exemplo</h2>
-        <p className="texto-suave pequeno">Só a nota fiscal ainda usa dados de exemplo, guardados neste aparelho. Este botão volta esses exemplos ao início. Não mexe em nada do que já é de verdade.</p>
-        {restaurado ? <Aviso tom="oliva">Dados de exemplo restaurados.</Aviso> : (
-          <BotaoPerigo texto="Restaurar dados de exemplo" aoConfirmar={() => { restaurar(); setRestaurado(true) }} />
-        )}
-      </section>
     </div>
   )
 }

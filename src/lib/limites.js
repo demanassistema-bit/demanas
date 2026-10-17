@@ -64,6 +64,9 @@ export function filtroPercentual(t, max = LIMITE.percentual) {
 // Tira espaços das pontas e espaços repetidos no meio
 export const limparTexto = (t) => String(t ?? '').replace(/\s+/g, ' ').trim()
 
+// Busca sem diferenciar acento e maiúscula
+export const normalizar = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
 // ---------------- Leitura com mensagem de erro ----------------
 // Valor em reais → { valor } ou { erro }
 export function lerValor(texto, { rotulo = 'o valor', min = 0.01, max = LIMITE.valor, obrigatorio = true } = {}) {

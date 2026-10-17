@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react'
 import Icone from './Icone'
-import { useDemo } from '../demo/DemoContext'
-import { normalizar } from '../demo/regras'
 import { formatarMoeda } from '../lib/moeda'
 import { diasAte } from '../lib/datas'
-import { TAMANHO } from '../lib/limites'
+import { TAMANHO, normalizar } from '../lib/limites'
 
 // Selo de situação em tons terrosos: 'ambar' | 'vinho' | 'oliva' | 'neutro'
 export function Selo({ tom = 'neutro', children }) {
@@ -71,10 +69,9 @@ export function buscarVariacoes(linhas, texto, limite = 8) {
 }
 
 // Escolher uma variação digitando parte do nome, código ou cor
-// opcoes: lista de peças para escolher (sem ela, usa as peças da demonstração)
+// opcoes: lista de peças para escolher (as linhas do catálogo)
 export function SeletorVariacao({ escolhida, aoEscolher, opcoes }) {
-  const { linhas: daDemo } = useDemo()
-  const linhas = opcoes || daDemo
+  const linhas = opcoes
   const [texto, setTexto] = useState('')
   const resultados = useMemo(() => buscarVariacoes(linhas, texto), [linhas, texto])
 

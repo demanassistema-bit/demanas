@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client'
 import { configurado } from './lib/supabase'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { DemoProvider } from './demo/DemoContext'
 import { CatalogoProvider } from './contexts/CatalogoContext'
 import { ClientesProvider } from './contexts/ClientesContext'
 import App from './App'
@@ -28,9 +27,7 @@ if (!configurado) {
         <ThemeProvider>
           <CatalogoProvider>
             <ClientesProvider>
-              <DemoProvider>
-                <App />
-              </DemoProvider>
+              <App />
             </ClientesProvider>
           </CatalogoProvider>
         </ThemeProvider>

@@ -1,29 +1,22 @@
 import { useState } from 'react'
-import { useDemo } from '../../demo/DemoContext'
 import { useCatalogo } from '../../contexts/CatalogoContext'
 import { hojeISO } from '../../lib/datas'
 import { cnpjValido, erroData, filtroInteiro, formatarCNPJ, limparCNPJ, limparTexto, TAMANHO, UFS } from '../../lib/limites'
-import { CAMPOS_PERFIL_FISCAL, faltasPerfilFiscal, situacaoCertificado } from '../../demo/regras'
+import { CAMPOS_PERFIL_FISCAL, faltasPerfilFiscal, situacaoCertificado } from '../../lib/fiscal'
 import { Aviso, Selo } from '../../components/ui'
 
 const REGIMES = { '': 'A confirmar com a contadora', mei: 'MEI', simples: 'Simples Nacional', presumido: 'Lucro Presumido', real: 'Lucro Real' }
-const PROVEDORES = ['Focus NFe', 'Nuvem Fiscal', 'PlugNotas (Tecnospeed)', 'eNotas', 'Notaas']
+const PROVEDORES = { simulado: 'Simulado (teste, sem contratar nada)', focus: 'Focus NFe (aguarda a aprovação das irmãs)' }
 const CAMPOS_BANCO = { ncm: 'ncm', cest: 'cest', origem: 'origem', cfop: 'cfop', csosn: 'csosn_ou_cst' }
 
 export default function DadosFiscais() {
-  const { dados, atualizarConfig } = useDemo()
   const { empresas, categorias, produtos, perfisFiscais } = useCatalogo()
-  // provedor, certificado e "emitir sempre" ainda são da demonstração (Etapa 7)
-  const fiscal = dados.config.fiscal
-  const salvarDemo = (campos) => atualizarConfig({ fiscal: { ...fiscal, ...campos } })
-  const certificado = situacaoCertificado(fiscal.certificadoValidade, hojeISO())
   const emissora = Object.values(empresas).find((e) => e.tipo === 'me')
-  const [validadeTexto, setValidadeTexto] = useState(fiscal.certificadoValidade || '')
-  const erroValidade = erroData(validadeTexto, { rotulo: 'a validade', min: '2020-01-01', max: '2040-12-31', obrigatoria: false })
 
   // categorias com produto que sai com nota (CNPJ da ME)
   const idsComNota = new Set(produtos.filter((p) => p.ativo && empresas[p.empresa_id]?.tipo === 'me').map((p) => p.categoria_id))
   const categoriasComNota = categorias.filter((c) => idsComNota.has(c.id))
+  const semCategoria = produtos.filter((p) => p.ativo && empresas[p.empresa_id]?.tipo === 'me' && !p.categoria_id)
 
   return (
     <div className="calculadora">
@@ -35,42 +28,68 @@ export default function DadosFiscais() {
         {Object.values(empresas).map((e) => <FormEmpresa key={e.id} empresa={e} />)}
       </section>
 
-      <section className="cartao secao">
-        <h2>Emissão · {emissora?.apelido}</h2>
-        <Aviso tom="ambar">Ainda de demonstração: provedor, certificado e a forma de emitir passam a valer na Etapa 7.</Aviso>
-        <div className="grade-campos">
-          <label className="campo"><span>Serviço de emissão (provedor)</span>
-            <select value={fiscal.provedor} onChange={(e) => salvarDemo({ provedor: e.target.value })}>
-              <option value="">Ainda não escolhido</option>
-              {PROVEDORES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </label>
-          <label className="campo"><span>Validade do certificado A1 do {emissora?.apelido}</span>
-            <input type="date" min="2020-01-01" max="2040-12-31" value={validadeTexto}
-              onChange={(e) => { setValidadeTexto(e.target.value); if (!erroData(e.target.value, { min: '2020-01-01', max: '2040-12-31', obrigatoria: false })) salvarDemo({ certificadoValidade: e.target.value }) }} />
-            {erroValidade && <small className="texto-alerta">{erroValidade}</small>}
-          </label>
-        </div>
-        <p className="pequeno">{certificado.tom ? <Selo tom={certificado.tom}>{certificado.texto}</Selo> : <Selo tom="oliva">{certificado.texto}</Selo>}</p>
-        <div className="campo">
-          <span>Emitir nota <small className="decisao">decisão em aberto · confirmar com vocês e a contadora</small></span>
-          <div className="segmentado">
-            <button className={fiscal.emitir === 'sempre' ? 'ativo' : ''} onClick={() => salvarDemo({ emitir: 'sempre' })}>Em toda venda</button>
-            <button className={fiscal.emitir === 'pedido' ? 'ativo' : ''} onClick={() => salvarDemo({ emitir: 'pedido' })}>Só quando pedirem</button>
-          </div>
-        </div>
-        <p className="texto-suave pequeno">O arquivo e a senha do certificado e o CSC da NFC-e ficam guardados só no serviço de emissão, nunca no sistema. Aqui fica apenas a validade, para o aviso de 60, 30 e 15 dias.</p>
-      </section>
+      {emissora && <Emissao empresa={emissora} />}
 
       <section className="cartao secao">
         <h2>Dados fiscais por categoria</h2>
         <p className="texto-suave pequeno">Cada produto herda os dados da sua categoria. A contadora preenche uma vez e marca como validado. Só aparecem as categorias com produtos do {emissora?.apelido}, que emite nota.</p>
+        {semCategoria.length > 0 && <Aviso tom="vinho">{semCategoria.length} {semCategoria.length === 1 ? 'produto do' : 'produtos do'} {emissora?.apelido} sem categoria: {semCategoria.slice(0, 5).map((p) => p.nome).join(', ')}{semCategoria.length > 5 ? '…' : ''}. Sem categoria, a nota fica pendente. Escolha a categoria na ficha do produto.</Aviso>}
         {categoriasComNota.length === 0 && <p className="texto-suave">Nenhuma categoria ainda: cadastre os produtos primeiro.</p>}
         {categoriasComNota.map((c) => <FormPerfilFiscal key={c.id} categoria={c} perfil={perfisFiscais[c.id]} />)}
       </section>
     </div>
   )
 }
+
+// Como a nota sai: serviço de emissão, certificado, sempre ou só quando pedirem, série
+function Emissao({ empresa }) {
+  const { atualizarEmpresa } = useCatalogo()
+  const [validade, setValidade] = useState(empresa.certificado_validade || '')
+  const [serie, setSerie] = useState(String(empresa.nfce_serie || 1))
+  const [msg, setMsg] = useState(null)
+  const certificado = situacaoCertificado(empresa.certificado_validade, hojeISO())
+  const erroValidade = erroData(validade, { rotulo: 'a validade', min: '2020-01-01', max: '2040-12-31', obrigatoria: false })
+
+  async function salvar(campos) {
+    const r = await atualizarEmpresa(empresa.id, campos)
+    setMsg(r.erro ? { tom: 'vinho', texto: r.erro } : { tom: 'oliva', texto: 'Salvo.' })
+  }
+
+  return (
+    <section className="cartao secao">
+      <h2>Emissão · {empresa.apelido}</h2>
+      <div className="grade-campos">
+        <label className="campo"><span>Serviço de emissão</span>
+          <select value={empresa.fiscal_provedor} onChange={(e) => salvar({ fiscal_provedor: e.target.value })}>
+            {Object.entries(PROVEDORES).map(([k, n]) => <option key={k} value={k} disabled={k === 'focus'}>{n}</option>)}
+          </select>
+        </label>
+        <label className="campo"><span>Validade do certificado A1</span>
+          <input type="date" min="2020-01-01" max="2040-12-31" value={validade}
+            onChange={(e) => setValidade(e.target.value)}
+            onBlur={() => { if (!erroValidade && (validade || null) !== (empresa.certificado_validade || null)) salvar({ certificado_validade: validade || null }) }} />
+          {erroValidade && <small className="texto-alerta">{erroValidade}</small>}
+        </label>
+        <label className="campo"><span>Série da NFC-e</span>
+          <input inputMode="numeric" value={serie} onChange={(e) => setSerie(filtroInteiro(e.target.value, 3))}
+            onBlur={() => { const n = Number(serie); if (n >= 1 && n <= 999 && n !== empresa.nfce_serie) salvar({ nfce_serie: n }); else setSerie(String(empresa.nfce_serie || 1)) }} />
+        </label>
+      </div>
+      <p className="pequeno">{certificado.tom ? <Selo tom={certificado.tom}>{certificado.texto}</Selo> : <Selo tom="oliva">{certificado.texto}</Selo>}</p>
+      <div className="campo">
+        <span>Emitir nota <small className="decisao">decisão em aberto · confirmar com vocês e a contadora</small></span>
+        <div className="segmentado">
+          <button className={empresa.emitir_quando === 'sempre' ? 'ativo' : ''} onClick={() => salvar({ emitir_quando: 'sempre' })}>Em toda venda</button>
+          <button className={empresa.emitir_quando === 'pedido' ? 'ativo' : ''} onClick={() => salvar({ emitir_quando: 'pedido' })}>Só quando pedirem</button>
+        </div>
+        <small className="texto-suave">"Só quando pedirem": a nota é pedida depois, no detalhe da venda, com CPF se a cliente quiser.</small>
+      </div>
+      {msg && <Aviso tom={msg.tom}>{msg.texto}</Aviso>}
+      <p className="texto-suave pequeno">O ambiente fica travado em <strong>teste (homologação)</strong>: produção só com ordem explícita, depois da contadora conferir. O arquivo e a senha do certificado e o CSC da NFC-e ficam só no serviço de emissão, nunca no sistema. Aqui fica apenas a validade, para o aviso de 60, 30 e 15 dias.</p>
+    </section>
+  )
+}
+
 
 function FormEmpresa({ empresa }) {
   const { atualizarEmpresa } = useCatalogo()

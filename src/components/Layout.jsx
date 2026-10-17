@@ -63,7 +63,7 @@ export default function Layout() {
   return (
     <div className="app">
       <div className="faixa-demo" role="note">
-        <span><strong>Em montagem</strong> · tudo já é de verdade, menos a nota fiscal, que ainda é de exemplo (guardada só neste aparelho) e espera a aprovação de vocês.</span>
+        <span><strong>Em montagem</strong> · tudo já é de verdade. A nota fiscal está em teste, com um serviço de emissão simulado, até vocês aprovarem o serviço de verdade.</span>
       </div>
 
       <aside className="lateral">

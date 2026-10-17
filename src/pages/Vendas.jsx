@@ -7,6 +7,7 @@ import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
 import { filtroInteiro, formatarWhatsApp, limparTexto, TAMANHO } from '../lib/limites'
 import { formatarDataHora, hojeISO, deISO, somarDias } from '../lib/datas'
 import { COMO_DEVOLVEU, NOMES_FORMAS, valorDevolucao } from '../lib/vendas'
+import { cpfValido } from '../../supabase/functions/_shared/fiscal/documento.js'
 import Modal, { BotaoPerigo } from '../components/Modal'
 import Icone from '../components/Icone'
 import { Aviso, Selo, Vazio } from '../components/ui'
@@ -14,6 +15,50 @@ import { Aviso, Selo, Vazio } from '../components/ui'
 const PERIODOS = { hoje: 'Hoje', semana: '7 dias', mes: '30 dias', tudo: 'Tudo' }
 const NOTA = { a_emitir: ['ambar', 'Nota a emitir'], emitida: ['oliva', 'Nota emitida'], pendente: ['vinho', 'Nota pendente'], cancelada: ['neutro', 'Nota cancelada'] }
 const POR_PAGINA = 100
+
+// Situação da nota fiscal da venda; no modo "só quando pedirem", o botão para pedir (com CPF opcional)
+function NotaDaVenda({ venda, empresa, temDevolucao, aoMudar }) {
+  const { permissoes } = useAuth()
+  const [cpf, setCpf] = useState('')
+  const [erro, setErro] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  if (empresa?.tipo !== 'me') {
+    return <p className="texto-suave pequeno"><Icone nome="fiscal" tamanho={16} /> Sem nota fiscal: venda do CNPJ MEI, só para consumidor final.</p>
+  }
+  async function pedir() {
+    setErro('')
+    if (cpf && !cpfValido(cpf)) return setErro('CPF com número errado. Confira com a cliente ou deixe em branco.')
+    setEnviando(true)
+    const { error } = await supabase.rpc('pedir_nota', { p_venda: venda.id, p_cpf: cpf.replace(/\D/g, '') || null })
+    setEnviando(false)
+    if (error) return setErro(traduzirErro(error))
+    aoMudar()
+  }
+  const explica = {
+    a_emitir: 'A nota está na fila e sai em segundo plano.',
+    emitida: 'Para cancelar a nota, cancele a venda em até 30 minutos depois da emissão (regra da NFC-e). Depois disso, a devolução é com a contadora.',
+    pendente: `A venda está feita, mas a nota está pendente: ${permissoes.pode_fiscal ? 'veja o motivo e reenvie em Nota fiscal.' : 'avise quem tem o código da Nota fiscal.'}`,
+    cancelada: 'A nota foi cancelada junto com a venda.',
+  }
+  if (venda.status === 'concluida' && venda.nota_status === 'sem_nota') {
+    return (
+      <div className="formulario">
+        <p className="texto-suave pequeno"><Icone nome="fiscal" tamanho={16} /> Venda sem nota (a loja emite só quando a cliente pede).</p>
+        <div className="linha-campos">
+          <input className="campo-solto" inputMode="numeric" value={cpf} onChange={(e) => setCpf(e.target.value.replace(/[^\d.-]/g, '').slice(0, 14))} placeholder="CPF na nota (opcional)" aria-label="CPF na nota" />
+          <button className="botao botao-secundario" onClick={pedir} disabled={enviando}>{enviando ? 'Pedindo…' : 'Pedir nota'}</button>
+        </div>
+        {erro && <Aviso tom="vinho">{erro}</Aviso>}
+      </div>
+    )
+  }
+  return (
+    <>
+      <p className="texto-suave pequeno"><Icone nome="fiscal" tamanho={16} /> {NOTA[venda.nota_status]?.[1] || 'Nota'}{venda.cpf_nota && ` · CPF ${venda.cpf_nota.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')}`}. {explica[venda.nota_status] || ''}</p>
+      {temDevolucao && venda.nota_status === 'emitida' && <Aviso tom="ambar">Esta venda tem nota emitida e teve devolução: a nota de devolução é com a contadora.</Aviso>}
+    </>
+  )
+}
 
 export default function Vendas() {
   const { empresas } = useCatalogo()
@@ -216,10 +261,7 @@ function VendaAberta({ id, aoFechar, aoMudar }) {
       {venda.outras.length > 0 && (
         <p className="texto-suave pequeno">Esta compra teve peças dos dois CNPJs. A outra parte é a venda nº {venda.outras.map((x) => x.numero).join(', ')}.</p>
       )}
-      <p className="texto-suave pequeno">
-        <Icone nome="fiscal" tamanho={16} />{' '}
-        {venda.nota_status === 'sem_nota' ? 'Sem nota fiscal: venda do CNPJ MEI, só para consumidor final.' : `${NOTA[venda.nota_status]?.[1] || ''}. A emissão chega na etapa da Nota fiscal.`}
-      </p>
+      <NotaDaVenda venda={venda} empresa={empresas[venda.empresa_id]} temDevolucao={temDevolucao} aoMudar={depoisDeMudar} />
 
       {venda.devolucoes.map((d) => (
         <Aviso key={d.id} tom="ambar">

@@ -8,7 +8,8 @@ import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda, CAN
 import { filtroDinheiro, filtroPercentual, filtroTelefone, formatarWhatsApp, LIMITE, limparTexto, linkWhatsApp, numeroWhatsApp, TAMANHO, whatsappValido } from '../lib/limites'
 import { falta, FORMAS, MAX_PARCELAS, partesDaVenda, passaDoLimite, taxaEstimada, textoRecibo } from '../lib/vendas'
 import { emAberto, sinalPorParte } from '../lib/clientes'
-import { percentual } from '../demo/regras'
+import { cpfValido } from '../../supabase/functions/_shared/fiscal/documento.js'
+import { percentual } from '../lib/precos'
 import Icone from '../components/Icone'
 import LeitorCamera, { temLeitorCamera } from '../components/LeitorCamera'
 import { Aviso, buscarVariacoes, CampoBusca, Selo } from '../components/ui'
@@ -109,6 +110,7 @@ export default function NovaVenda() {
   const [clientesEncontrados, setClientesEncontrados] = useState([])
   const [cadastro, setCadastro] = useState(null) // { nome, whatsapp } quando aberto
   const [canal, setCanal] = useState('loja')
+  const [cpfNota, setCpfNota] = useState('')
   const [descontoTexto, setDescontoTexto] = useState('')
   const [descontoModo, setDescontoModo] = useState('reais')
   const [aprovacao, setAprovacao] = useState(null) // id da autorização
@@ -255,6 +257,7 @@ export default function NovaVenda() {
     setErro('')
     if (descontoInvalido) return setErro('O desconto zerou a venda. Para dar a peça de presente, use "Brinde" em Estoque → Saída e correção.')
     if (!pagamentoFecha) return setErro('A soma das formas de pagamento precisa ser igual ao total de cada parte.')
+    if (cpfNota && !cpfValido(cpfNota)) return setErro('CPF na nota com número errado. Confira com a cliente ou deixe em branco.')
     setEnviando(true)
 
     // cadastro rápido: a cliente é criada antes; se a venda não fechar, ela já fica escolhida
@@ -278,6 +281,7 @@ export default function NovaVenda() {
       p: {
         cliente_id: clienteDaVenda?.id || null,
         encomenda_id: encomenda?.id || null,
+        cpf_nota: cpfNota.replace(/\D/g, '') || null,
         canal,
         aprovacao,
         partes: partes.map((p, i) => ({
@@ -313,7 +317,7 @@ export default function NovaVenda() {
 
   function novaVenda() {
     setEstado(vazio())
-    setCliente(null); setBuscaCliente(''); setCadastro(null); setCanal('loja')
+    setCliente(null); setBuscaCliente(''); setCadastro(null); setCanal('loja'); setCpfNota('')
     setDescontoTexto(''); setDescontoModo('reais'); setAprovacao(null); setCodigo('')
     setPagamentosPor({}); setResultado(null); setErro('')
   }
@@ -337,11 +341,11 @@ export default function NovaVenda() {
                   <strong>{empresas[v.empresa_id]?.apelido} · venda nº {v.numero}</strong>
                   <small>{formatarMoeda(v.total)}</small>
                 </span>
-                {empresas[v.empresa_id]?.tipo === 'me' ? <Selo tom="ambar">Nota a emitir</Selo> : <Selo>Sem nota (MEI)</Selo>}
+                {empresas[v.empresa_id]?.tipo !== 'me' ? <Selo>Sem nota (MEI)</Selo> : empresas[v.empresa_id]?.emitir_quando === 'pedido' ? <Selo>Nota só se pedirem</Selo> : <Selo tom="ambar">Nota na fila</Selo>}
               </li>
             ))}
           </ul>
-          <p className="texto-suave pequeno">A venda está registrada e o estoque já foi baixado. A emissão da nota fiscal chega na etapa da Nota fiscal.</p>
+          <p className="texto-suave pequeno">A venda está registrada e o estoque já foi baixado. A nota sai sozinha, em segundo plano (por enquanto, em teste simulado).</p>
           <div className="acoes-coluna">
             <a href={linkWhats} target="_blank" rel="noreferrer" className="botao botao-secundario botao-grande"><Icone nome="conversa" /> Enviar recibo por WhatsApp</a>
             <button className="botao botao-principal botao-grande" onClick={novaVenda}><Icone nome="somar" /> Nova venda</button>
@@ -385,6 +389,14 @@ export default function NovaVenda() {
             </>
           )}
         </section>
+
+        {partes.some((p) => empresas[p.empresa_id]?.tipo === 'me' && empresas[p.empresa_id]?.emitir_quando !== 'pedido') && (
+          <section className="cartao secao">
+            <h2>CPF na nota <small className="texto-suave">(opcional)</small></h2>
+            <input className="campo-solto" inputMode="numeric" value={cpfNota} onChange={(e) => setCpfNota(e.target.value.replace(/[^\d.-]/g, '').slice(0, 14))} placeholder="000.000.000-00" aria-label="CPF na nota" />
+            {cpfNota && !cpfValido(cpfNota) && cpfNota.replace(/\D/g, '').length >= 11 && <p className="texto-alerta pequeno">CPF com número errado.</p>}
+          </section>
+        )}
 
         <section className="cartao secao">
           <h2>Onde foi a venda</h2>
