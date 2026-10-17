@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { useDemo } from '../demo/DemoContext'
+import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import Logo from './Logo'
 import Icone from './Icone'
@@ -13,16 +13,19 @@ const ITENS = [
   { para: '/produtos', nome: 'Produtos', icone: 'produtos' },
   { para: '/estoque', nome: 'Estoque', icone: 'estoque' },
   { para: '/clientes', nome: 'Clientes', icone: 'clientes' },
-  { para: '/relatorios', nome: 'Relatórios', icone: 'relatorios' },  { para: '/financeiro', nome: 'Financeiro', icone: 'financeiro', trancada: true, so: 'proprietaria' },
-  { para: '/fiscal', nome: 'Nota fiscal', icone: 'fiscal', trancada: true, so: 'proprietaria' },
-  { para: '/configuracoes', nome: 'Configurações', icone: 'configuracoes', so: 'proprietaria' },
+  { para: '/relatorios', nome: 'Relatórios', icone: 'relatorios' },
+  { para: '/financeiro', nome: 'Financeiro', icone: 'financeiro', trancada: true, so: 'pode_financeiro' },
+  { para: '/fiscal', nome: 'Nota fiscal', icone: 'fiscal', trancada: true, so: 'pode_fiscal' },
+  { para: '/equipe', nome: 'Equipe', icone: 'clientes', so: 'admin' },
+  { para: '/configuracoes', nome: 'Configurações', icone: 'configuracoes', so: 'admin' },
 ]
 
-export default function Layout({ aoSair }) {
-  const { perfil, setPerfil, usuario } = useDemo()
+export default function Layout() {
+  const { perfil, permissoes, sair } = useAuth()
   const { tema, alternarTema } = useTheme()
   const [menuAberto, setMenuAberto] = useState(false)
-  const itens = ITENS.filter((i) => !i.so || i.so === perfil)
+  const itens = ITENS.filter((i) => !i.so || permissoes[i.so])
+  const nome = perfil?.nome || perfil?.email || ''
 
   const navegacao = (
     <nav className="navegacao">
@@ -39,17 +42,17 @@ export default function Layout({ aoSair }) {
   const rodape = (
     <div className="lateral-rodape">
       <div className="usuario">
-        <span className="avatar">{usuario.charAt(0)}</span>
+        <span className="avatar">{nome.charAt(0).toUpperCase()}</span>
         <span className="usuario-info">
-          <strong>{usuario}</strong>
-          <small>demonstração</small>
+          <strong>{nome}</strong>
+          <small>{permissoes.admin ? 'Proprietária' : 'Vendedora'}</small>
         </span>
       </div>
       <div className="lateral-acoes">
         <button className="botao-icone" onClick={alternarTema} title={tema === 'escuro' ? 'Modo claro' : 'Modo escuro'} aria-label="Alternar tema">
           <Icone nome={tema === 'escuro' ? 'sol' : 'lua'} tamanho={19} />
         </button>
-        <button className="botao-icone" onClick={aoSair} title="Sair" aria-label="Sair">
+        <button className="botao-icone" onClick={sair} title="Sair" aria-label="Sair">
           <Icone nome="sair" tamanho={19} />
         </button>
       </div>
@@ -59,14 +62,7 @@ export default function Layout({ aoSair }) {
   return (
     <div className="app">
       <div className="faixa-demo" role="note">
-        <span><strong>Demonstração</strong> · dados de exemplo, nada aqui é real</span>
-        <span className="ver-como">
-          Ver como
-          <span className="alternador" role="group" aria-label="Ver como">
-            <button className={perfil === 'proprietaria' ? 'ativo' : ''} onClick={() => setPerfil('proprietaria')}>Proprietária</button>
-            <button className={perfil === 'vendedora' ? 'ativo' : ''} onClick={() => setPerfil('vendedora')}>Vendedora</button>
-          </span>
-        </span>
+        <span><strong>Em montagem</strong> · o login e a equipe já são de verdade. Produtos, estoque, vendas e clientes ainda são dados de exemplo, guardados só neste aparelho.</span>
       </div>
 
       <aside className="lateral">

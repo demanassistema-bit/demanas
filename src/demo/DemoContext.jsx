@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { CONFIG_CALCULADORA, CONFIG_EMPRESAS, CONFIG_FISCAL, gerarDadosExemplo, gerarEncomendasExemplo, gerarFinanceiroExemplo, VERSAO_DADOS } from './dados'
 import { alocarPorValidade, calcularSaldos, emiteNota, nomeVariacao, novoCustoMedio, podeApagarCliente, podeApagarProduto, totaisVenda } from './regras'
 import { arred } from '../lib/moeda'
+import { useAuth } from '../contexts/AuthContext'
 
 /*
   Estado da DEMONSTRAÇÃO. Fica só neste navegador (localStorage) e pode ser restaurado.
@@ -9,7 +10,6 @@ import { arred } from '../lib/moeda'
 */
 const DemoContext = createContext(null)
 const CHAVE = 'demanas-demo-dados'
-const CHAVE_PERFIL = 'demanas-demo-perfil'
 
 function carregar() {
   try {
@@ -28,9 +28,6 @@ const NOMES_PERFIL = { proprietaria: 'Proprietária', vendedora: 'Vendedora' }
 
 export function DemoProvider({ children }) {
   const [dados, setDados] = useState(carregar)
-  const [perfil, setPerfilEstado] = useState(() => {
-    try { return localStorage.getItem(CHAVE_PERFIL) || 'proprietaria' } catch { return 'proprietaria' }
-  })
   const atual = useRef(dados)
   atual.current = dados
 
@@ -38,13 +35,11 @@ export function DemoProvider({ children }) {
     try { localStorage.setItem(CHAVE, JSON.stringify(dados)) } catch { /* sem armazenamento */ }
   }, [dados])
 
-  const setPerfil = (p) => {
-    setPerfilEstado(p)
-    try { localStorage.setItem(CHAVE_PERFIL, p) } catch { /* sem armazenamento */ }
-  }
-
+  // quem está usando vem do login de verdade: admin = proprietária, membro = vendedora
+  const { perfil: conta, permissoes } = useAuth()
+  const perfil = permissoes.admin ? 'proprietaria' : 'vendedora'
   const ehProprietaria = perfil === 'proprietaria'
-  const usuario = NOMES_PERFIL[perfil]
+  const usuario = conta?.nome || NOMES_PERFIL[perfil]
 
   // ---------------- Leituras derivadas ----------------
   const saldos = useMemo(() => calcularSaldos(dados.movimentacoes), [dados.movimentacoes])
@@ -355,7 +350,7 @@ export function DemoProvider({ children }) {
     <DemoContext.Provider
       value={{
         dados, saldos, linhas, lotesComSaldo, produtoPorId, variacaoPorId, clientePorId,
-        perfil, setPerfil, ehProprietaria, podeVerCustos: ehProprietaria, usuario,
+        perfil, ehProprietaria, podeVerCustos: ehProprietaria, usuario,
         concluirVenda, cancelarVenda, reenviarNota, registrarEntrada, registrarAjuste,
         criarProduto, atualizarProduto, criarCliente, atualizarConfig, restaurar,
         abrirCaixa, lancarNoCaixa, fecharCaixa, criarConta, marcarPaga,

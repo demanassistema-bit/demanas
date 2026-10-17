@@ -531,3 +531,22 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 /* Tabelas: nome quebra, números ficam juntos; se ainda não couber, rola só a tabela */
 .tabela tbody th { overflow-wrap: anywhere; }
 .secao:has(> .tabela) { overflow-x: auto; }
+
+/* ---------- Login real, equipe e áreas protegidas ---------- */
+.carregando { min-height: 100vh; display: grid; place-items: center; background: var(--fundo); }
+.carregando img { animation: respirar 1.4s ease-in-out infinite; }
+@keyframes respirar { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .carregando img { animation: none; } }
+.tela-acesso { position: relative; }
+.tema-flutuante { position: absolute; top: 16px; right: 16px; }
+.faixa-protegida {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px;
+  padding: 8px 14px; border-radius: 12px; background: var(--oliva-fundo); color: var(--oliva); font-size: 0.85rem; font-weight: 600;
+}
+.faixa-protegida span { display: inline-flex; align-items: center; gap: 6px; }
+.lista-equipe { display: flex; flex-direction: column; gap: 14px; }
+.membro { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-top: 1px solid var(--borda); }
+.membro:first-child { border-top: 0; padding-top: 0; }
+.membro.inativo { opacity: 0.6; }
+.membro-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.membro-topo small { display: block; color: var(--texto-suave); overflow-wrap: anywhere; }

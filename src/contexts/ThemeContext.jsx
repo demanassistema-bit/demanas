@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useAuth } from './AuthContext'
 
-// Na versão real, a escolha também fica salva no perfil (vale em qualquer aparelho)
+// Tema claro ou escuro. Fica no aparelho e, depois do login, no perfil (vale em qualquer aparelho).
 const ThemeContext = createContext(null)
 
 function lerTemaSalvo() {
@@ -8,14 +9,24 @@ function lerTemaSalvo() {
 }
 
 export function ThemeProvider({ children }) {
+  const { perfil, atualizarPerfil } = useAuth()
   const [tema, setTema] = useState(lerTemaSalvo)
+
+  // ao entrar, vale o tema escolhido no perfil
+  useEffect(() => {
+    if (perfil?.tema) setTema(perfil.tema)
+  }, [perfil?.tema])
 
   useEffect(() => {
     document.documentElement.dataset.theme = tema
     try { localStorage.setItem('demanas-tema', tema) } catch { /* navegador sem armazenamento */ }
   }, [tema])
 
-  const alternarTema = () => setTema(tema === 'escuro' ? 'claro' : 'escuro')
+  const alternarTema = () => {
+    const novo = tema === 'escuro' ? 'claro' : 'escuro'
+    setTema(novo)
+    if (perfil) atualizarPerfil({ tema: novo })
+  }
 
   return <ThemeContext.Provider value={{ tema, alternarTema }}>{children}</ThemeContext.Provider>
 }

@@ -1,4 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Navigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import { Aviso } from '../components/ui'
 import Icone from '../components/Icone'
 import { TAMANHO } from '../lib/limites'
 import Calculadora from './Calculadora'
@@ -37,33 +41,71 @@ const AREAS = {
 const ler = (chave) => { try { return sessionStorage.getItem(chave) } catch { return null } }
 const gravar = (chave, valor) => { try { sessionStorage.setItem(chave, valor) } catch { /* sem armazenamento */ } }
 
-// Porta de entrada das áreas protegidas (na demonstração, qualquer código abre)
+// Porta de entrada das áreas protegidas: permissão dada pela proprietária + código conferido no banco.
+// A proteção de verdade fica no banco (RLS); esta tela é só a porta.
 export default function AreaFutura({ area }) {
   const info = AREAS[area]
   const primeira = Object.keys(info.abas)[0]
+  const { permissoes, atualizarPermissoes } = useAuth()
   const [codigo, setCodigo] = useState('')
-  // o desbloqueio vale enquanto a aba do navegador estiver aberta
-  const [aberta, setAberta] = useState(() => ler(`demanas-demo-${area}`) === '1')
+  const [erro, setErro] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [expiraEm, setExpiraEm] = useState(null)
   const [aba, setAba] = useState(() => {
-    const salva = ler(`demanas-demo-aba-${area}`)
+    const salva = ler(`demanas-aba-${area}`)
     return info.abas[salva] ? salva : primeira
   })
-  const mudarAba = (a) => { setAba(a); gravar(`demanas-demo-aba-${area}`, a) }
-  const abrir = () => { setAberta(true); gravar(`demanas-demo-${area}`, '1') }
+  const mudarAba = (a) => { setAba(a); gravar(`demanas-aba-${area}`, a) }
 
-  if (!aberta) {
+  const pode = permissoes[`pode_${area}`]
+  const liberada = permissoes[`${area}_liberado`]
+
+  // até quando vale o desbloqueio; tranca sozinho quando acaba
+  useEffect(() => {
+    if (!liberada) return undefined
+    let timer
+    supabase.from('desbloqueios').select('expira_em').eq('area', area).maybeSingle().then(({ data }) => {
+      if (!data) return
+      const fim = new Date(data.expira_em)
+      setExpiraEm(fim)
+      timer = setTimeout(atualizarPermissoes, Math.max(fim - Date.now(), 0) + 1000)
+    })
+    return () => clearTimeout(timer)
+  }, [liberada, area, atualizarPermissoes])
+
+  if (!pode) return <Navigate to="/" replace />
+
+  async function desbloquear(e) {
+    e.preventDefault()
+    setEnviando(true)
+    setErro('')
+    const { data, error } = await supabase.rpc('desbloquear_area', { p_area: area, p_codigo: codigo })
+    setEnviando(false)
+    setCodigo('')
+    if (error || !data?.ok) return setErro(data?.erro || 'Não foi possível conferir o código. Confira a internet.')
+    await atualizarPermissoes()
+  }
+
+  async function trancar() {
+    await supabase.rpc('bloquear_area', { p_area: area })
+    setExpiraEm(null)
+    await atualizarPermissoes()
+  }
+
+  if (!liberada) {
     return (
       <div className="tela-codigo">
-        <form className="cartao cartao-codigo" onSubmit={(e) => { e.preventDefault(); abrir() }}>
+        <form className="cartao cartao-codigo" onSubmit={desbloquear}>
           <span className="selo-cadeado"><Icone nome="cadeado" tamanho={26} /></span>
           <h1>{info.titulo}</h1>
           <p className="texto-suave">Área protegida. Digite o código de acesso para continuar.</p>
           <label className="campo">
             <span>Código de acesso</span>
-            <input type="password" autoComplete="off" maxLength={TAMANHO.codigo} value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+            <input type="password" autoComplete="off" maxLength={TAMANHO.codigo} value={codigo} onChange={(e) => setCodigo(e.target.value)} required autoFocus />
           </label>
-          <button className="botao botao-principal">Entrar</button>
-          <p className="texto-suave pequeno">Na demonstração, qualquer código abre. Na versão real, o código fica protegido no banco e 5 erros bloqueiam por 15 minutos.</p>
+          {erro && <Aviso tom="vinho">{erro}</Aviso>}
+          <button className="botao botao-principal" disabled={enviando || !codigo}>{enviando ? 'Conferindo…' : 'Entrar'}</button>
+          <p className="texto-suave pequeno">Libera por 4 horas. 5 erros seguidos bloqueiam por 15 minutos.</p>
         </form>
       </div>
     )
@@ -74,6 +116,10 @@ export default function AreaFutura({ area }) {
   return (
     <div className="pagina pagina-estreita">
       <header className="pagina-topo"><h1>{info.titulo}</h1></header>
+      <div className="faixa-protegida">
+        <span><Icone nome="cadeado" tamanho={15} /> Liberado{expiraEm && ` até ${expiraEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}</span>
+        <button className="botao-link" onClick={trancar}>Trancar agora</button>
+      </div>
       {Topo && <Topo />}
       <div className="abas" role="tablist">
         {Object.entries(info.abas).map(([chave, { nome }]) => (
