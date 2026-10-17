@@ -506,3 +506,28 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 /* Botão de excluir menor, para não competir com as ações principais */
 .excluir-discreto { display: flex; justify-content: flex-end; }
 .excluir-discreto .botao { padding: 6px 12px; font-size: 0.8rem; min-height: 0; }
+
+/* ---------------- Texto longo nunca sai do quadro ---------------- */
+/* Em flex e grid, o filho só encolhe se puder ficar menor que o próprio conteúdo */
+.cartao, .secao, .bloco, .metrica, .encomenda, .produto, .conteudo, .pagina,
+.grade-blocos > *, .grade-metricas > *, .grade-produtos > *, .lista-encomendas > * { min-width: 0; }
+/* Palavras e nomes compridos quebram dentro do quadro */
+.cartao, .aviso, .faixa-alerta, .seletor-escolhido, .lista-opcoes, .mensagem-pronta, .cupom { overflow-wrap: anywhere; }
+/* Título do quadro ocupa o espaço que sobra; o "Ver tudo" fica inteiro ao lado */
+.bloco-topo { align-items: flex-start; }
+.bloco-topo > h2, .bloco-topo > h3, .bloco-topo > strong:first-child, .bloco-topo > a:first-child { flex: 1 1 auto; min-width: 0; }
+.bloco-topo > .botao-link, .bloco-topo > .selo, .bloco-topo > .selos, .bloco-topo > strong:last-child { flex: 0 0 auto; white-space: nowrap; }
+.bloco-topo > h2 .icone, h2 .icone { flex-shrink: 0; }
+/* Nas linhas de lista: o texto encolhe e quebra; selos, valores e ações não */
+.linha-lista > span:first-child, .linha-lista > a:first-child, .item-nome, .variacao-nome, .produto-info { min-width: 0; flex: 1 1 auto; }
+.linha-lista > :not(:first-child), .produto-direita, .resultado-direita, .item-total, .conta-direita > strong { flex-shrink: 0; }
+.selo { flex-shrink: 0; max-width: 100%; white-space: normal; text-align: center; }
+.lista-opcoes button > span:first-child { flex: 1 1 auto; }
+/* Grades que se ajustam em telas estreitas */
+.grade-blocos { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+.grade-produtos { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
+.lista-encomendas { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.grade-campos { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+/* Tabelas: nome quebra, números ficam juntos; se ainda não couber, rola só a tabela */
+.tabela tbody th { overflow-wrap: anywhere; }
+.secao:has(> .tabela) { overflow-x: auto; }
