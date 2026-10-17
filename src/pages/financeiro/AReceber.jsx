@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useCatalogo } from '../../contexts/CatalogoContext'
-import { supabase, traduzirErro } from '../../lib/supabase'
+import { buscarTudo, supabase, traduzirErro } from '../../lib/supabase'
 import { formatarMoeda } from '../../lib/moeda'
 import { diasAte, formatarData, hojeISO, paraISO, somarDias } from '../../lib/datas'
 import { agruparPorDia, somar } from '../../lib/financeiro'
@@ -16,10 +16,10 @@ export default function AReceber() {
 
   const carregar = useCallback(async () => {
     const desde = paraISO(somarDias(new Date(), -30))
-    const { data, error } = await supabase.from('recebiveis')
+    const { data, error } = await buscarTudo(() => supabase.from('recebiveis')
       .select('*, vendas(numero)')
       .or(`status.eq.a_receber,and(status.eq.recebido,recebido_em.gte.${desde})`)
-      .order('data_prevista').limit(5000)
+      .order('data_prevista').order('id'))
     if (error) return setErro(traduzirErro(error))
     setLista(data.map((r) => ({ ...r, bruto: Number(r.bruto), taxa: Number(r.taxa), liquido: Number(r.liquido) })))
   }, [])

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, traduzirErro } from '../../lib/supabase'
+import { buscarTudo, supabase, traduzirErro } from '../../lib/supabase'
 import { formatarMoeda, formatarPercentual } from '../../lib/moeda'
 import { formatarData, hojeISO, NOMES_MESES, paraISO } from '../../lib/datas'
 import { CATEGORIAS_DESPESA, fluxoSemanas } from '../../lib/financeiro'
@@ -24,8 +24,8 @@ export default function Resultado() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('recebiveis').select('data_prevista, liquido, status').eq('status', 'a_receber').limit(5000),
-      supabase.from('contas_pagar').select('vencimento, valor, pago_em').is('pago_em', null).limit(5000),
+      buscarTudo(() => supabase.from('recebiveis').select('data_prevista, liquido, status').eq('status', 'a_receber').order('id')),
+      buscarTudo(() => supabase.from('contas_pagar').select('vencimento, valor, pago_em').is('pago_em', null).order('id')),
     ]).then(([rec, contas]) => {
       if (rec.error || contas.error) return setErro(traduzirErro(rec.error || contas.error))
       setSemanas(fluxoSemanas({ recebiveis: rec.data, contas: contas.data, hoje: hojeISO() }))

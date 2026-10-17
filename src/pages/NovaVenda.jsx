@@ -9,6 +9,7 @@ import { filtroDinheiro, filtroPercentual, filtroTelefone, formatarWhatsApp, LIM
 import { falta, FORMAS, MAX_PARCELAS, partesDaVenda, passaDoLimite, taxaEstimada, textoRecibo } from '../lib/vendas'
 import { emAberto, sinalPorParte } from '../lib/clientes'
 import { cpfValido } from '../../supabase/functions/_shared/fiscal/documento.js'
+import { faltasPerfilFiscal } from '../lib/fiscal'
 import { percentual } from '../lib/precos'
 import Icone from '../components/Icone'
 import LeitorCamera, { temLeitorCamera } from '../components/LeitorCamera'
@@ -139,14 +140,10 @@ export default function NovaVenda() {
   // Atalhos: o que mais vendeu nos últimos 30 dias e ainda tem em estoque
   const [maisVendidos, setMaisVendidos] = useState([])
   useEffect(() => {
-    const desde = new Date(Date.now() - 30 * 86400000).toISOString()
-    supabase.from('venda_itens').select('variacao_id, quantidade, vendas!inner(criado_em, status)')
-      .gte('vendas.criado_em', desde).eq('vendas.status', 'concluida').limit(3000)
-      .then(({ data }) => {
-        const soma = new Map()
-        for (const i of data || []) soma.set(i.variacao_id, (soma.get(i.variacao_id) || 0) + i.quantidade)
-        setMaisVendidos([...soma.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id))
-      })
+    const hoje = new Date()
+    const dia = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    supabase.rpc('relatorio_vendas', { p_inicio: dia(new Date(Date.now() - 29 * 86400000)), p_fim: dia(hoje) })
+      .then(({ data }) => setMaisVendidos([...(data?.pecas || [])].sort((a, b) => b.quantidade - a.quantidade).map((p) => p.variacao_id)))
   }, [])
   const atalhos = maisVendidos.map((id) => linhaPorId.get(id)).filter((l) => l && l.ativo && (l.saldo > 0 || permitirNegativo)).slice(0, 6)
 
@@ -545,6 +542,14 @@ export default function NovaVenda() {
         </section>
       )}
       {duasEmpresas && <p className="texto-suave pequeno">Peças dos dois CNPJs: no pagamento, o sistema separa quanto cobrar em cada maquininha.</p>}
+      {(() => {
+        // regra 13: peça do CNPJ que emite nota sem dados fiscais completos → a venda sai, a nota fica pendente
+        const semFiscal = itens.filter((i) => {
+          const e = empresas[i.linha.produto.empresa_id]
+          return e?.tipo === 'me' && e.emitir_quando !== 'pedido' && faltasPerfilFiscal(cat.perfisFiscais[i.linha.produto.categoria_id]).length > 0
+        })
+        return semFiscal.length > 0 && <p className="texto-suave pequeno"><Icone nome="fiscal" tamanho={14} /> A nota de {semFiscal.map((i) => i.linha.produto.nome).join(', ')} vai ficar pendente: faltam os dados fiscais da categoria, que a contadora preenche. A venda sai normal.</p>
+      })()}
       {permitirNegativo && <p className="texto-suave pequeno">"Vender sem estoque" está ligado em Configurações: a venda passa mesmo quando o sistema diz que a peça acabou.</p>}
 
       {itens.length > 0 && (

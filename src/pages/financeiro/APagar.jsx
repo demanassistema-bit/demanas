@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useCatalogo } from '../../contexts/CatalogoContext'
-import { supabase, traduzirErro } from '../../lib/supabase'
+import { buscarTudo, supabase, traduzirErro } from '../../lib/supabase'
 import { arred, formatarMoeda, lerMoeda } from '../../lib/moeda'
 import { diasAte, formatarData, hojeISO } from '../../lib/datas'
 import { erroData, filtroDinheiro, filtroInteiro, LIMITE, lerInteiro, lerValor, limparTexto, somarMeses, TAMANHO } from '../../lib/limites'
@@ -17,7 +17,7 @@ export default function APagar() {
   const hoje = hojeISO()
 
   const carregar = useCallback(async () => {
-    const { data, error } = await supabase.from('contas_pagar').select('*').order('vencimento').limit(5000)
+    const { data, error } = await buscarTudo(() => supabase.from('contas_pagar').select('*').order('vencimento').order('id'))
     if (error) return setErro(traduzirErro(error))
     setContas(data.map((c) => ({ ...c, valor: Number(c.valor) })))
   }, [])

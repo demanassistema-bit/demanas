@@ -4,6 +4,7 @@ import { useCatalogo } from '../contexts/CatalogoContext'
 import { supabase, traduzirErro } from '../lib/supabase'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { filtroDinheiro, filtroPercentual, LIMITE, TAMANHO } from '../lib/limites'
+import { paraISO, somarDias } from '../lib/datas'
 import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem } from '../lib/precos'
 import Icone from '../components/Icone'
 import { Aviso, SeletorVariacao } from '../components/ui'
@@ -38,18 +39,18 @@ export default function Calculadora() {
   const [erro, setErro] = useState('')
 
   useEffect(() => {
-    const desde = new Date(Date.now() - 90 * 86400000).toISOString()
+    const hoje = paraISO(new Date())
     Promise.all([
       supabase.from('config_financeiro').select('valor').eq('chave', 'calculadora').single(),
       supabase.from('custos_fixos').select('*').order('ordem').order('criado_em'),
-      supabase.from('vendas').select('total').eq('status', 'concluida').gte('criado_em', desde).limit(20000),
+      supabase.rpc('relatorio_vendas', { p_inicio: paraISO(somarDias(new Date(), -89)), p_fim: hoje }),
     ]).then(([cfg, fix, ven]) => {
       const falha = [cfg, fix, ven].find((r) => r.error)
       if (falha) return setErro(traduzirErro(falha.error))
       setDados({
         calc: cfg.data.valor,
         custos: fix.data.map((c) => ({ ...c, valor: Number(c.valor) })),
-        faturamentoMedio: arred(ven.data.reduce((s, v) => s + Number(v.total), 0) / 3),
+        faturamentoMedio: arred(Number(ven.data?.faturamento || 0) / 3),
       })
     })
   }, [])

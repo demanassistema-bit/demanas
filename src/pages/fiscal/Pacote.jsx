@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { buscarTudo, supabase, traduzirErro } from '../../lib/supabase'
 import { arred, formatarMoeda } from '../../lib/moeda'
 import { diaDe, formatarDataHora, NOMES_MESES, paraISO } from '../../lib/datas'
 import { NOMES_FORMAS } from '../../lib/vendas'
 import { textoCSV } from '../../lib/relatorios'
 import Icone from '../../components/Icone'
 import { Aviso, Metrica } from '../../components/ui'
-import { NOMES_STATUS, numeroNota, useNotas } from './comum'
+import { NOMES_STATUS, numeroNota } from './comum'
 
 function baixarCSV(nome, linhas) {
   const url = URL.createObjectURL(new Blob([`﻿${textoCSV(linhas)}`], { type: 'text/csv;charset=utf-8' }))
@@ -18,13 +19,23 @@ function baixarCSV(nome, linhas) {
 
 // Pacote mensal da contadora: resumo, planilha de todas as notas e os XMLs (quando o serviço de verdade estiver ligado)
 export default function Pacote() {
-  const { notas, erro } = useNotas()
   const agora = new Date()
   const meses = [-1, 0, -2].map((m) => {
     const d = new Date(agora.getFullYear(), agora.getMonth() + m, 1)
     return { chave: paraISO(d).slice(0, 7), nome: NOMES_MESES[d.getMonth()] }
   })
   const [mes, setMes] = useState(meses[0].chave)
+  const [notas, setNotas] = useState(null)
+  const [erro, setErro] = useState('')
+  useEffect(() => {
+    // a venda do último dia pode virar nota no dia seguinte: busca com uma folga e filtra pela data da nota
+    const [a, m] = mes.split('-').map(Number)
+    const de = new Date(a, m - 1, 1).toISOString()
+    const ate = new Date(a, m, 2).toISOString()
+    setNotas(null)
+    buscarTudo(() => supabase.from('documentos_fiscais').select('*, vendas(numero)').gte('criado_em', de).lt('criado_em', ate).order('id'))
+      .then(({ data, error }) => (error ? setErro(traduzirErro(error)) : setNotas(data.map((n) => ({ ...n, valor_total: Number(n.valor_total) })).sort((x, y) => y.criado_em.localeCompare(x.criado_em)))))
+  }, [mes])
   if (!notas) return <div className="calculadora">{erro ? <Aviso tom="vinho">{erro}</Aviso> : <p className="texto-suave">Carregando…</p>}</div>
 
   // a nota conta no mês da emissão (ou da venda, se ainda não saiu)

@@ -18,6 +18,8 @@ export function AuthProvider({ children }) {
   const [perfil, setPerfil] = useState(null)
   const [permissoes, setPermissoes] = useState(semPermissoes)
   const [carregando, setCarregando] = useState(true)
+  // falha ao buscar o perfil (internet): não é "acesso desativado"
+  const [semConexao, setSemConexao] = useState(false)
   const [precisaDefinirSenha, setPrecisaDefinirSenha] = useState(
     linkDeAcesso.tipo === 'invite' || linkDeAcesso.tipo === 'recovery'
   )
@@ -49,11 +51,12 @@ export function AuthProvider({ children }) {
     }
     let ativo = true
     ;(async () => {
-      const [{ data: p }] = await Promise.all([
+      const [{ data: p, error }] = await Promise.all([
         supabase.from('perfis').select('*').eq('id', usuarioId).maybeSingle(),
         atualizarPermissoes(),
       ])
       if (ativo) {
+        setSemConexao(Boolean(error))
         setPerfil(p)
         setCarregando(false)
       }
@@ -80,6 +83,7 @@ export function AuthProvider({ children }) {
         perfil,
         permissoes,
         carregando,
+        semConexao,
         precisaDefinirSenha,
         concluirDefinicaoSenha: () => setPrecisaDefinirSenha(false),
         atualizarPermissoes,

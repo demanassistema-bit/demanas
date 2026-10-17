@@ -30,7 +30,7 @@ export function useAnaliseEstoque() {
   const [giro, setGiro] = useState(null)
   const [erro, setErro] = useState('')
   useEffect(() => {
-    supabase.rpc('giro_estoque', { p_dias: 30 }).then(({ data, error }) => (error ? setErro(traduzirErro(error)) : setGiro(data || [])))
+    supabase.rpc('giro_estoque', { p_dias: 30 }).then(({ data, error }) => (error ? setErro(traduzirErro(error)) : setGiro(Array.isArray(data) ? data : [])))
   }, [])
   const analise = useMemo(() => (giro ? analisarEstoque({
     linhas,

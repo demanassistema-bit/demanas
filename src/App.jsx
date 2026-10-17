@@ -20,12 +20,25 @@ import AreaFutura from './pages/AreaFutura'
 import Configuracoes from './pages/Configuracoes'
 
 export default function App() {
-  const { session, perfil, permissoes, carregando, precisaDefinirSenha, sair } = useAuth()
+  const { session, perfil, permissoes, carregando, semConexao, precisaDefinirSenha, sair } = useAuth()
 
   if (carregando) return <div className="carregando"><Logo altura={56} /></div>
   if (!session) return <Login />
   // convite, "esqueci a senha" ou login criado com senha provisória
   if (precisaDefinirSenha || perfil?.senha_provisoria) return <DefinirSenha />
+
+  if (semConexao) {
+    return (
+      <div className="tela-acesso">
+        <div className="cartao cartao-acesso">
+          <Logo altura={56} className="logo-login" />
+          <h1>Sem conexão</h1>
+          <p className="texto-suave">Não deu para falar com o sistema. Confira o Wi-Fi ou os dados do celular.</p>
+          <button className="botao botao-principal" onClick={() => window.location.reload()}>Tentar de novo</button>
+        </div>
+      </div>
+    )
+  }
 
   if (!perfil?.ativo) {
     return (

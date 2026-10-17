@@ -6,7 +6,7 @@ import { useCatalogo } from '../contexts/CatalogoContext'
 import { useClientes } from '../contexts/ClientesContext'
 import { textoLote } from '../lib/estoque'
 import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
-import { deISO, diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte, paraISO, somarDias } from '../lib/datas'
+import { diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte, paraISO, somarDias } from '../lib/datas'
 import Icone from '../components/Icone'
 import { Metrica, Selo, seloValidade, Vazio } from '../components/ui'
 import { aniversarioNoMes, situacaoEncomenda, textoItem } from '../lib/clientes'
@@ -30,37 +30,28 @@ export default function Inicio() {
   const mes = hoje.slice(0, 7)
   const mesAtual = new Date().getMonth()
 
-  // Vendas de verdade do mês (do banco)
-  const [vendasMes, setVendasMes] = useState([])
-  const [custoMes, setCustoMes] = useState(0)
+  // Vendas do dia e do mês: o banco soma (relatorio_vendas), sem o limite de linhas da API.
+  // Uma compra com peças dos dois CNPJs conta uma vez. As últimas 5 vendas vêm à parte.
+  const [doMes, setDoMes] = useState(null)
+  const [doDia, setDoDia] = useState(null)
+  const [ultimas, setUltimas] = useState([])
   useEffect(() => {
-    const inicioMes = deISO(`${mes}-01`).toISOString()
-    supabase.from('vendas')
-      .select('id, numero, total, status, canal, criado_em, clientes(nome), venda_itens(id, quantidade)')
-      .gte('criado_em', inicioMes).order('numero', { ascending: false }).limit(2000)
-      .then(async ({ data }) => {
-        const lista = data || []
-        setVendasMes(lista)
-        if (!podeVerCustos) return
-        const itens = lista.filter((v) => v.status === 'concluida').flatMap((v) => v.venda_itens)
-        if (!itens.length) return setCustoMes(0)
-        const { data: custos } = await supabase.from('custos_venda_itens').select('venda_item_id, custo_unitario').in('venda_item_id', itens.map((i) => i.id))
-        const porItem = new Map((custos || []).map((c) => [c.venda_item_id, Number(c.custo_unitario)]))
-        setCustoMes(arred(itens.reduce((s, i) => s + (porItem.get(i.id) || 0) * i.quantidade, 0)))
-      })
-  }, [mes, podeVerCustos])
+    supabase.rpc('relatorio_vendas', { p_inicio: `${mes}-01`, p_fim: hoje }).then(({ data }) => setDoMes(data))
+    supabase.rpc('relatorio_vendas', { p_inicio: hoje, p_fim: hoje }).then(({ data }) => setDoDia(data))
+    supabase.from('vendas').select('id, numero, total, status, canal, criado_em, clientes(nome)')
+      .order('numero', { ascending: false }).limit(5)
+      .then(({ data }) => setUltimas(data || []))
+  }, [mes, hoje])
 
   const resumo = useMemo(() => {
-    const validas = vendasMes.filter((v) => v.status === 'concluida')
-    const doDia = validas.filter((v) => diaDe(v.criado_em) === hoje)
-    const soma = (lista) => arred(lista.reduce((s, v) => s + Number(v.total), 0))
+    const fat = (r) => Number(r?.faturamento || 0)
     return {
-      dia: soma(doDia), qtdDia: doDia.length,
-      mes: soma(validas), qtdMes: validas.length,
-      ticket: validas.length ? arred(soma(validas) / validas.length) : 0,
-      lucro: arred(soma(validas) - custoMes),
+      dia: fat(doDia), qtdDia: doDia?.compras || 0,
+      mes: fat(doMes), qtdMes: doMes?.compras || 0,
+      ticket: doMes?.compras ? arred(fat(doMes) / doMes.compras) : 0,
+      lucro: arred(fat(doMes) - Number(doMes?.custo || 0)),
     }
-  }, [vendasMes, custoMes, hoje])
+  }, [doMes, doDia])
 
   // o que recomprar: as que vendem e acabam antes do prazo (Relatórios)
   const { analise } = useAnaliseEstoque()
@@ -74,7 +65,6 @@ export default function Inicio() {
   const aniversariantes = ativas
     .filter((c) => aniversarioNoMes(c.nascimento, mesAtual + 1))
     .sort((a, b) => a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)))
-  const ultimas = vendasMes.slice(0, 5)
   const [contasProximas, setContasProximas] = useState([])
   useEffect(() => {
     if (!contasLiberadas) return
@@ -98,8 +88,8 @@ export default function Inicio() {
       </header>
 
       <section className="grade-metricas">
-        <Metrica rotulo="Vendido hoje" valor={formatarMoeda(resumo.dia)} detalhe={`${resumo.qtdDia} ${resumo.qtdDia === 1 ? 'venda' : 'vendas'}`} />
-        <Metrica rotulo={`Vendido em ${NOMES_MESES[mesAtual]}`} valor={formatarMoeda(resumo.mes)} detalhe={`${resumo.qtdMes} vendas`} />
+        <Metrica rotulo="Vendido hoje" valor={formatarMoeda(resumo.dia)} detalhe={`${resumo.qtdDia} ${resumo.qtdDia === 1 ? 'compra' : 'compras'}`} />
+        <Metrica rotulo={`Vendido em ${NOMES_MESES[mesAtual]}`} valor={formatarMoeda(resumo.mes)} detalhe={`${resumo.qtdMes} ${resumo.qtdMes === 1 ? 'compra' : 'compras'}`} />
         <Metrica rotulo="Ticket médio do mês" valor={formatarMoeda(resumo.ticket)} />
         {podeVerCustos && <Metrica rotulo="Lucro bruto do mês" valor={formatarMoeda(resumo.lucro)} detalhe="vendas menos custo das peças" />}
       </section>
@@ -234,7 +224,7 @@ export default function Inicio() {
             <h2>Últimas vendas</h2>
             <Link to="/vendas" className="botao-link">Ver tudo</Link>
           </header>
-          {ultimas.length === 0 ? <Vazio icone="vendas" titulo="Nenhuma venda este mês ainda" /> : <ul className="lista">
+          {ultimas.length === 0 ? <Vazio icone="vendas" titulo="Nenhuma venda ainda" /> : <ul className="lista">
             {ultimas.map((v) => (
               <li key={v.id}>
                 <Link to={`/vendas?venda=${v.id}`} className="linha-lista">

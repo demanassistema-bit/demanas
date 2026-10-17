@@ -364,6 +364,7 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .cupom td:last-child { text-align: right; white-space: nowrap; padding-left: 8px; }
 .cupom-total td { font-weight: 700; border-top: 1px dashed #c9b49a; padding-top: 4px; }
 .cupom small { color: #6b5440; }
+.cupom-chave { overflow-wrap: anywhere; letter-spacing: 0.02em; }
 .cupom-qr { width: 96px; height: 96px; margin: 8px 0 4px; display: grid; place-items: center; border: 2px dashed #c9b49a; border-radius: 6px; color: #6b5440; font-size: 0.72rem; }
 .perfil-fiscal { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 14px; }
 .perfil-fiscal summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; }

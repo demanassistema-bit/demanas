@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { supabase, traduzirErro } from '../lib/supabase'
+import { buscarTudo, supabase, traduzirErro } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
 // Clientes de verdade (Etapa 5): ficha, resumo de compras e encomendas.
@@ -16,9 +16,9 @@ export function ClientesProvider({ children }) {
   const recarregar = useCallback(async () => {
     if (!session) return
     const [cli, res, enc] = await Promise.all([
-      supabase.from('clientes').select('*').order('nome'),
-      supabase.from('resumo_clientes').select('*'),
-      supabase.from('encomendas').select('*, encomenda_itens(*), vendas(id, numero)').order('criado_em', { ascending: false }).limit(2000),
+      buscarTudo(() => supabase.from('clientes').select('*').order('nome').order('id')),
+      buscarTudo(() => supabase.from('resumo_clientes').select('*').order('cliente_id')),
+      buscarTudo(() => supabase.from('encomendas').select('*, encomenda_itens(*), vendas(id, numero)').order('criado_em', { ascending: false }).order('id')),
     ])
     const falha = [cli, res, enc].find((r) => r.error)
     if (falha) {

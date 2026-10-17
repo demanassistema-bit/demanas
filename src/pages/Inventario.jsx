@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useCatalogo } from '../contexts/CatalogoContext'
-import { supabase, traduzirErro } from '../lib/supabase'
+import { buscarTudo, supabase, traduzirErro } from '../lib/supabase'
 import { filtroInteiro, LIMITE, lerInteiro, limparTexto, TAMANHO } from '../lib/limites'
 import { formatarDataHora } from '../lib/datas'
 import { chaveBalde, erroValidade, noEscopo, ordenarPorValidade, planoInventario, textoLote } from '../lib/estoque'
@@ -24,13 +24,14 @@ export default function Inventario() {
     setInventarios(data)
     const atual = data.find((i) => i.status === 'aberto')
     if (!atual) return setItens([])
-    const r = await supabase.from('inventario_itens')
+    // contagem da loja toda pode passar de 1000 linhas: busca em páginas, na ordem fixa do id
+    const r = await buscarTudo(() => supabase.from('inventario_itens')
       .select('id, variacao_id, lote_id, contado, saldo_sistema, atualizado_em, lotes(numero_lote, validade)')
       .eq('inventario_id', atual.id)
-      .order('atualizado_em', { ascending: false })
+      .order('id'))
     if (r.error) return setErro(traduzirErro(r.error))
     setErro('')
-    setItens(r.data)
+    setItens(r.data.sort((a, b) => b.atualizado_em.localeCompare(a.atualizado_em)))
   }, [])
 
   useEffect(() => { carregar() }, [carregar])

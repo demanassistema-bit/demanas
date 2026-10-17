@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { supabase, traduzirErro } from '../lib/supabase'
+import { buscarTudo, supabase, traduzirErro } from '../lib/supabase'
 import { descreverVariacao } from '../lib/catalogo'
 import { saldoDoKit } from '../lib/estoque'
 import { useAuth } from './AuthContext'
@@ -23,14 +23,15 @@ export function CatalogoProvider({ children }) {
     if (!session) return
     const [emp, cat, mar, forn, fisc, prod, kits, cust, est, par, tax] = await Promise.all([
       supabase.from('empresas').select('*').order('id'),
-      supabase.from('categorias').select('*').order('nome'),
-      supabase.from('marcas').select('*').order('nome'),
-      supabase.from('fornecedores').select('*').order('nome'),
-      supabase.from('perfis_fiscais').select('*'),
-      supabase.from('produtos').select('*, variacoes(*)').order('nome'),
-      supabase.from('kit_itens').select('*'),
-      podeVerCustos ? supabase.from('custos_variacao').select('variacao_id, custo_medio') : Promise.resolve({ data: [] }),
-      supabase.from('estoque_por_lote').select('*'),
+      // listas que crescem: em páginas de 1000 (limite do Supabase por pedido)
+      buscarTudo(() => supabase.from('categorias').select('*').order('nome').order('id')),
+      buscarTudo(() => supabase.from('marcas').select('*').order('nome').order('id')),
+      buscarTudo(() => supabase.from('fornecedores').select('*').order('nome').order('id')),
+      buscarTudo(() => supabase.from('perfis_fiscais').select('*').order('categoria_id')),
+      buscarTudo(() => supabase.from('produtos').select('*, variacoes(*)').order('nome').order('id')),
+      buscarTudo(() => supabase.from('kit_itens').select('*').order('kit_variacao_id').order('componente_variacao_id')),
+      podeVerCustos ? buscarTudo(() => supabase.from('custos_variacao').select('variacao_id, custo_medio').order('variacao_id')) : Promise.resolve({ data: [] }),
+      buscarTudo(() => supabase.from('estoque_por_lote').select('*').order('variacao_id').order('lote_id')),
       supabase.from('parametros').select('chave, valor'),
       podeVerCustos ? supabase.from('taxas_pagamento').select('empresa_id, tipo, percentual') : Promise.resolve({ data: [] }),
     ])

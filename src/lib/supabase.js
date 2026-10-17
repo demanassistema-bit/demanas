@@ -35,6 +35,19 @@ const traducoes = {
   'update or delete on table': 'Não dá para apagar: já tem histórico ligado a isso.'
 }
 
+// O Supabase devolve no máximo 1000 linhas por pedido. Para listas que crescem (estoque, clientes,
+// contas), busca página por página até acabar. `consulta` cria a consulta de novo a cada página
+// e precisa de uma ordem fixa (por id), senão uma página pode repetir ou pular linhas.
+export async function buscarTudo(consulta, porPagina = 1000) {
+  const todas = []
+  for (let de = 0; ; de += porPagina) {
+    const { data, error } = await consulta().range(de, de + porPagina - 1)
+    if (error) return { data: null, error }
+    todas.push(...data)
+    if (data.length < porPagina) return { data: todas, error: null }
+  }
+}
+
 export function traduzirErro(erro) {
   const msg = erro?.message || String(erro || '')
   const encontrada = Object.keys(traducoes).find((k) => msg.startsWith(k))

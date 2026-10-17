@@ -99,10 +99,11 @@ export default function Equipe() {
       <section className="cartao secao">
         <h2>Convidar alguém</h2>
         <p className="texto-suave pequeno">
-          O convite sai pelo painel do Supabase, com a conta da loja: <strong>Add user → Send invitation</strong>, e o e-mail da pessoa.
-          Ela recebe um link, cria a senha e aparece nesta lista como vendedora. Aí é só mudar o papel aqui, se for o caso.
+          O login é criado no painel do Supabase, com a conta da loja: <strong>Add user → Create new user</strong>, com o e-mail da pessoa,
+          uma senha provisória e <strong>Auto Confirm User</strong> marcado. Mande a senha provisória por WhatsApp: no primeiro acesso, o sistema pede uma senha nova.
+          A pessoa aparece nesta lista como vendedora. Aí é só mudar o papel aqui, se for o caso.
         </p>
-        <a className="botao botao-secundario" href={LINK_CONVITE} target="_blank" rel="noreferrer">Abrir o painel de convites</a>
+        <a className="botao botao-secundario" href={LINK_CONVITE} target="_blank" rel="noreferrer">Abrir o painel de usuários</a>
       </section>
 
       <section className="cartao secao">
