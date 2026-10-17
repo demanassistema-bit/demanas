@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
+import { useCatalogo } from '../contexts/CatalogoContext'
+import { textoLote } from '../lib/estoque'
 import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
 import { diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte } from '../lib/datas'
 import Icone from '../components/Icone'
@@ -14,7 +16,9 @@ function saudacao() {
 }
 
 export default function Inicio() {
-  const { dados, linhas, lotesComSaldo, variacaoPorId, produtoPorId, clientePorId, podeVerCustos } = useDemo()
+  const { dados, linhas, clientePorId, podeVerCustos } = useDemo()
+  const catalogo = useCatalogo()
+  const linhaReal = useMemo(() => new Map(catalogo.linhas.map((l) => [l.id, l])), [catalogo.linhas])
   const hoje = hojeISO()
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const mes = hoje.slice(0, 7)
@@ -34,8 +38,12 @@ export default function Inicio() {
     }
   }, [dados.vendas, hoje, mes])
 
-  const acabando = linhas.filter((l) => l.ativo && l.saldo <= l.estoque_minimo).sort((a, b) => a.saldo - b.saldo)
-  const vencendo = lotesComSaldo.filter((l) => diasAte(l.validade) <= 90).sort((a, b) => a.validade.localeCompare(b.validade))
+  const acabando = catalogo.linhas
+    .filter((l) => l.ativo && l.produto.tipo !== 'kit' && l.saldo <= l.estoque_minimo)
+    .sort((a, b) => a.saldo - b.saldo)
+  const vencendo = catalogo.lotesComSaldo
+    .filter((l) => l.validade && diasAte(l.validade) <= 90 && linhaReal.has(l.variacao_id))
+    .sort((a, b) => a.validade.localeCompare(b.validade))
   const aniversariantes = dados.clientes
     .filter((c) => c.nascimento && Number(c.nascimento.slice(5, 7)) === mesAtual + 1)
     .sort((a, b) => a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)))
@@ -100,12 +108,11 @@ export default function Inicio() {
           {vencendo.length === 0 ? <Vazio icone="confirmar" titulo="Nada vencendo em 90 dias" /> : (
             <ul className="lista">
               {vencendo.slice(0, 6).map((l) => {
-                const v = variacaoPorId.get(l.variacao_id)
-                const p = produtoPorId.get(v.produto_id)
+                const v = linhaReal.get(l.variacao_id)
                 return (
-                  <li key={l.id}>
-                    <Link to={`/produtos/${p.id}`} className="linha-lista">
-                      <span><strong>{p.nome}</strong><small>{v.tonalidade || v.volume} · lote {l.numero} · {l.saldo} un</small></span>
+                  <li key={l.lote_id}>
+                    <Link to={`/produtos/${v.produto_id}`} className="linha-lista">
+                      <span><strong>{v.produto.nome}</strong><small>{v.nomeVariacao} · {textoLote(l)} · {l.saldo} un</small></span>
                       {seloValidade(l.validade)}
                     </Link>
                   </li>

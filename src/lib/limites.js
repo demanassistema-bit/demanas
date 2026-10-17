@@ -16,6 +16,7 @@ export const TAMANHO = {
   motivo: 120,       // ajuste, sangria, cancelamento
   observacao: 200,
   lote: 30,
+  nota: 40,
   custoFixo: 40,     // nome de um custo fixo
   apelido: 20,       // "CNPJ Day"
   razaoSocial: 120,

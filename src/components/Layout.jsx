@@ -63,7 +63,7 @@ export default function Layout() {
   return (
     <div className="app">
       <div className="faixa-demo" role="note">
-        <span><strong>Em montagem</strong> · o login, a equipe e os produtos já são de verdade. Produtos e fornecedores também. Estoque, vendas e clientes ainda são dados de exemplo, guardados só neste aparelho.</span>
+        <span><strong>Em montagem</strong> · login, equipe, produtos, fornecedores e estoque já são de verdade. Vendas, clientes, encomendas e financeiro ainda são de exemplo, guardados só neste aparelho: venda de exemplo não mexe no estoque de verdade.</span>
       </div>
 
       <aside className="lateral">

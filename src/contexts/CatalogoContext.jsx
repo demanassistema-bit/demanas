@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase, traduzirErro } from '../lib/supabase'
 import { descreverVariacao } from '../lib/catalogo'
+import { saldoDoKit } from '../lib/estoque'
 import { useAuth } from './AuthContext'
 
 // Catálogo de verdade (Etapa 2): CNPJs, categorias, marcas, fornecedores, produtos e variações.
 // O custo só vem para quem pode ver custos (o banco não entrega para os outros).
+// Estoque (Etapa 3): os saldos vêm do livro do estoque, somados pelo banco.
 export const CatalogoContext = createContext(null)
 
-const vazio = { empresas: {}, categorias: [], marcas: [], fornecedores: [], perfisFiscais: {}, produtos: [], kitItens: [], custos: new Map() }
+const vazio = { empresas: {}, categorias: [], marcas: [], fornecedores: [], perfisFiscais: {}, produtos: [], kitItens: [], custos: new Map(), baldes: [] }
 
 export function CatalogoProvider({ children }) {
   const { session, permissoes } = useAuth()
@@ -18,7 +20,7 @@ export function CatalogoProvider({ children }) {
 
   const recarregar = useCallback(async () => {
     if (!session) return
-    const [emp, cat, mar, forn, fisc, prod, kits, cust] = await Promise.all([
+    const [emp, cat, mar, forn, fisc, prod, kits, cust, est] = await Promise.all([
       supabase.from('empresas').select('*').order('id'),
       supabase.from('categorias').select('*').order('nome'),
       supabase.from('marcas').select('*').order('nome'),
@@ -27,8 +29,9 @@ export function CatalogoProvider({ children }) {
       supabase.from('produtos').select('*, variacoes(*)').order('nome'),
       supabase.from('kit_itens').select('*'),
       podeVerCustos ? supabase.from('custos_variacao').select('variacao_id, custo_medio') : Promise.resolve({ data: [] }),
+      supabase.from('estoque_por_lote').select('*'),
     ])
-    const falha = [emp, cat, mar, forn, fisc, prod, kits, cust].find((r) => r.error)
+    const falha = [emp, cat, mar, forn, fisc, prod, kits, cust, est].find((r) => r.error)
     if (falha) {
       setErro(traduzirErro(falha.error))
       setCarregando(false)
@@ -47,6 +50,7 @@ export function CatalogoProvider({ children }) {
       })),
       kitItens: kits.data,
       custos: new Map(cust.data.map((c) => [c.variacao_id, Number(c.custo_medio)])),
+      baldes: est.data.filter((b) => b.saldo !== 0),
     })
     setCarregando(false)
   }, [session, podeVerCustos])
@@ -64,6 +68,14 @@ export function CatalogoProvider({ children }) {
   const marcaPorId = useMemo(() => new Map(dados.marcas.map((m) => [m.id, m])), [dados.marcas])
   const produtoPorId = useMemo(() => new Map(dados.produtos.map((p) => [p.id, p])), [dados.produtos])
 
+  const saldoPorVariacao = useMemo(() => {
+    const mapa = new Map()
+    for (const b of dados.baldes) mapa.set(b.variacao_id, (mapa.get(b.variacao_id) || 0) + b.saldo)
+    return mapa
+  }, [dados.baldes])
+  // Lotes com saldo, com validade (para os avisos de vencimento)
+  const lotesComSaldo = useMemo(() => dados.baldes.filter((b) => b.lote_id && b.saldo > 0), [dados.baldes])
+
   // Cada variação pronta para busca e escolha (mesmo formato do seletor de peças)
   const linhas = useMemo(() => dados.produtos.flatMap((p) => p.variacoes.map((v) => ({
     ...v,
@@ -72,10 +84,12 @@ export function CatalogoProvider({ children }) {
     sku: v.codigo_interno,
     preco: Number(v.preco_venda),
     custo: dados.custos.get(v.id),
-    saldo: null, // o estoque de verdade chega na Etapa 3
+    saldo: p.tipo === 'kit'
+      ? saldoDoKit(dados.kitItens.filter((k) => k.kit_variacao_id === v.id), saldoPorVariacao)
+      : saldoPorVariacao.get(v.id) || 0,
     variacao_ativa: v.ativo, // a variação em si (fora de linha ou não)
     ativo: v.ativo && p.ativo, // pode ser vendida agora
-  }))), [dados.produtos, dados.custos, marcaPorId, categoriaPorId])
+  }))), [dados.produtos, dados.custos, dados.kitItens, saldoPorVariacao, marcaPorId, categoriaPorId])
 
   // Executa uma ação no banco e recarrega. Devolve { erro } com a mensagem em português.
   const acao = useCallback(async (promessa) => {
@@ -87,6 +101,8 @@ export function CatalogoProvider({ children }) {
 
   const valor = {
     ...dados, carregando, erro, recarregar, podeVerCustos, linhas, categoriaPorId, marcaPorId, produtoPorId,
+    saldoPorVariacao, lotesComSaldo,
+    baldesDa: (variacaoId) => dados.baldes.filter((b) => b.variacao_id === variacaoId),
 
     salvarProdutos: (lista) => acao(supabase.rpc('salvar_produtos', { p_produtos: lista })),
     atualizarProduto: (id, campos) => acao(supabase.from('produtos').update(campos).eq('id', id)),
@@ -137,6 +153,13 @@ export function CatalogoProvider({ children }) {
     salvarFornecedor: (f) => acao(f.id ? supabase.from('fornecedores').update(f).eq('id', f.id) : supabase.from('fornecedores').insert(f)),
     salvarPerfilFiscal: (categoriaId, campos) => acao(supabase.from('perfis_fiscais').upsert({ categoria_id: categoriaId, ...campos })),
     atualizarEmpresa: (id, campos) => acao(supabase.from('empresas').update(campos).eq('id', id)),
+
+    // Estoque: tudo passa pelas funções do banco (o livro não aceita escrita direta)
+    registrarEntrada: (entrada) => acao(supabase.rpc('registrar_entrada', { p: entrada })),
+    registrarSaida: ({ variacaoId, tipo, quantidade, motivo, loteId }) => acao(supabase.rpc('registrar_saida', {
+      p_variacao: variacaoId, p_tipo: tipo, p_quantidade: quantidade, p_motivo: motivo, p_lote: loteId || null,
+    })),
+    corrigirSaldo: (variacaoId, contado, motivo) => acao(supabase.rpc('corrigir_saldo', { p_variacao: variacaoId, p_contado: contado, p_motivo: motivo })),
   }
 
   return <CatalogoContext.Provider value={valor}>{children}</CatalogoContext.Provider>

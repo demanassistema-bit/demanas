@@ -7,10 +7,11 @@ import { formatarMoeda, formatarPercentual, paraCampoMoeda } from '../lib/moeda'
 import { formatarDataHora } from '../lib/datas'
 import { percentual } from '../demo/regras'
 import { CAMPOS_VARIACAO, descreverVariacao, erroCodigoBarras, TIPOS_PRODUTO } from '../lib/catalogo'
+import { ordenarPorValidade, textoLote } from '../lib/estoque'
 import { filtroDinheiro, filtroInteiro, lerInteiro, lerValor, limparTexto, LIMITE, TAMANHO } from '../lib/limites'
 import Modal, { BotaoPerigo } from '../components/Modal'
 import Icone from '../components/Icone'
-import { Aviso, Selo, SeletorVariacao } from '../components/ui'
+import { Aviso, Selo, SeletorVariacao, seloValidade } from '../components/ui'
 
 const NOMES_CAMPO = { modelo: 'Modelo', cor: 'Cor', tamanho: 'Tamanho', tonalidade: 'Tonalidade', volume: 'Volume' }
 
@@ -71,18 +72,23 @@ export default function FichaProduto() {
               <div className="variacao-nome">
                 <strong>{v.nomeVariacao} {!v.variacao_ativa && <Selo>Fora de linha</Selo>}</strong>
                 <small>{v.codigo_barras ? `Código ${v.codigo_barras}${v.codigo_proprio ? ' (próprio)' : ''}` : 'Sem código de barras'}</small>
+                {!ehKit && <LotesDaVariacao variacaoId={v.id} />}
               </div>
               <div className="variacao-numeros">
+                <span><small>{ehKit ? 'Dá para montar' : 'Estoque'}</small><strong className={v.saldo <= 0 ? 'texto-negativo' : ''}>{v.saldo}</strong></span>
                 <span><small>Preço</small><strong>{formatarMoeda(v.preco)}</strong></span>
                 {podeVerCustos && <span><small>Custo</small>{formatarMoeda(v.custo ?? 0)}</span>}
                 {podeVerCustos && <span><small>Margem</small>{v.custo != null && v.preco > 0 ? formatarPercentual(percentual(v.preco - v.custo, v.preco)) : '—'}</span>}
                 <span><small>Mínimo</small>{v.estoque_minimo}</span>
+                {!ehKit && <Link className="botao-link" to={`/estoque?aba=movimentacoes&variacao=${v.id}`}>Histórico</Link>}
                 {admin && <button className="botao-link" onClick={() => setVariacaoAberta(v.id)}>Editar</button>}
               </div>
             </li>
           ))}
         </ul>
-        <p className="texto-suave pequeno">O estoque de cada variação aparece aqui quando o Estoque passar a usar o banco (Etapa 3).</p>
+        <p className="texto-suave pequeno">{ehKit
+          ? 'O kit não tem estoque próprio: o número é quantos kits dá para montar com as peças que existem.'
+          : <>Para mudar o estoque, use <Link to="/estoque?aba=entrada">Entrada</Link>, <Link to="/estoque?aba=saida">Saída e correção</Link> ou a <Link to="/estoque?aba=inventario">Contagem</Link>.</>}</p>
       </section>
 
       {ehKit && variacoes[0] && <ItensDoKit kit={variacoes[0]} itens={kitItens.filter((k) => k.kit_variacao_id === variacoes[0].id)} admin={admin} executar={executar} />}
@@ -310,5 +316,22 @@ function ItensDoKit({ kit, itens, admin, executar }) {
         }} />
       )}
     </section>
+  )
+}
+
+// Lotes com saldo de uma variação (só aparece quando existe lote)
+function LotesDaVariacao({ variacaoId }) {
+  const { baldesDa } = useCatalogo()
+  const baldes = ordenarPorValidade(baldesDa(variacaoId).filter((b) => b.saldo > 0))
+  if (!baldes.some((b) => b.lote_id)) return null
+  return (
+    <span className="lotes-variacao">
+      {baldes.map((b) => (
+        <span key={b.lote_id || 'sem'} className="selos">
+          <Selo>{textoLote(b)}: {b.saldo} un</Selo>
+          {b.validade && seloValidade(b.validade)}
+        </span>
+      ))}
+    </span>
   )
 }

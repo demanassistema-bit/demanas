@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
 import { formatarMoeda } from '../lib/moeda'
 import { normalizar } from '../demo/regras'
-import { combinarVariacoes, erroCodigoBarras, TIPOS_PRODUTO } from '../lib/catalogo'
+import { combinarVariacoes, descreverVariacao, erroCodigoBarras, TIPOS_PRODUTO } from '../lib/catalogo'
+import { erroValidade } from '../lib/estoque'
 import { filtroDinheiro, filtroInteiro, lerInteiro, lerValor, limparTexto, LIMITE, separarLista, TAMANHO } from '../lib/limites'
 import Modal from '../components/Modal'
 import Icone from '../components/Icone'
@@ -82,7 +83,7 @@ export default function Produtos() {
               <div className="produto-info">
                 <strong>{p.nome}</strong>
                 <small>{[p.categoria, p.marca, empresas[p.empresa_id]?.apelido].filter(Boolean).join(' · ')}</small>
-                <small>{p.vs.length} {p.vs.length === 1 ? 'variação' : 'variações'}</small>
+                <small>{p.vs.length} {p.vs.length === 1 ? 'variação' : 'variações'} · {p.vs.reduce((s, v) => s + Math.max(v.saldo, 0), 0)} {p.tipo === 'kit' ? 'para montar' : 'em estoque'}</small>
               </div>
               <div className="produto-direita">
                 <strong>{p.vs.length === 0 ? '—' : p.min === p.max ? formatarMoeda(p.min) : `${formatarMoeda(p.min)}+`}</strong>
@@ -98,13 +99,16 @@ export default function Produtos() {
   )
 }
 
-function NovoProduto({ aoFechar }) {
+// aoCriar: quem abriu decide o que fazer depois (sem ele, abre a ficha do produto)
+export function NovoProduto({ aoFechar, aoCriar }) {
   const { produtos, categorias, marcas, empresas, podeVerCustos, salvarProdutos } = useCatalogo()
   const navegar = useNavigate()
   const [f, setF] = useState({
     nome: '', tipo: 'lingerie', categoria: '', marca: '', empresa_id: 'day', preco: '', custo: '', minimo: '1',
     modelos: '', cores: '', tamanhos: 'P, M, G', tonalidades: '', volumes: '', codigo: '', codigoProprio: false, controla_validade: true,
+    numero_lote: '', validade: '',
   })
+  const [quantidades, setQuantidades] = useState({}) // quantas tem agora, por variação (índice)
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
   const mudar = (campos) => setF({ ...f, ...campos })
@@ -116,6 +120,8 @@ function NovoProduto({ aoFechar }) {
   const combinacoes = combinarVariacoes(f.tipo, listas)
   const qtd = combinacoes.length
   const kit = f.tipo === 'kit'
+  const comLote = f.tipo === 'cosmetico' && f.controla_validade
+  const MAX_GRADE = 40 // acima disso, a quantidade entra depois, pela Entrada ou pela Contagem
 
   async function salvar(e) {
     e.preventDefault()
@@ -138,19 +144,32 @@ function NovoProduto({ aoFechar }) {
     const codigo = qtd === 1 ? f.codigo.trim() : ''
     const erroCodigo = erroCodigoBarras(codigo)
     if (erroCodigo) return setErro(erroCodigo)
+    const qtds = []
+    for (let i = 0; i < combinacoes.length; i++) {
+      if (kit || qtd > MAX_GRADE) { qtds.push(0); continue }
+      const lido = lerInteiro(quantidades[i] ?? '', { rotulo: 'a quantidade em estoque', min: 0, max: LIMITE.quantidade, obrigatorio: false })
+      if (lido.erro) return setErro(lido.erro)
+      qtds.push(lido.valor || 0)
+    }
+    const erroVal = comLote ? erroValidade(f.validade, { aceitarVencida: true }) : null
+    if (erroVal) return setErro(erroVal)
 
     setSalvando(true)
     const r = await salvarProdutos([{
       nome, tipo: f.tipo, categoria: limparTexto(f.categoria), marca: limparTexto(f.marca), empresa_id: f.empresa_id,
       controla_validade: f.tipo === 'cosmetico' && f.controla_validade,
-      variacoes: combinacoes.map((c) => ({
+      variacoes: combinacoes.map((c, i) => ({
         ...c, codigo_barras: codigo || null, codigo_proprio: !codigo && (kit || f.codigoProprio),
         preco_venda: preco.valor, custo: podeVerCustos ? custo.valor : 0, estoque_minimo: minimo.valor,
+        quantidade: qtds[i],
+        numero_lote: comLote && qtds[i] ? limparTexto(f.numero_lote) || null : null,
+        validade: comLote && qtds[i] ? f.validade || null : null,
       })),
     }])
     setSalvando(false)
     if (r.erro) return setErro(r.erro)
-    navegar(`/produtos/${r.data[0]}`)
+    if (aoCriar) aoCriar(r.data[0])
+    else navegar(`/produtos/${r.data[0]}`)
   }
 
   return (
@@ -207,7 +226,32 @@ function NovoProduto({ aoFechar }) {
           Não tem código de barras: o sistema cria um próprio{qtd > 1 ? ' para cada variação' : ''}
         </label>
         {qtd > 1 && !f.codigoProprio && <p className="texto-suave pequeno">Os códigos do fabricante de cada variação entram depois, na ficha do produto.</p>}
-        {kit && <p className="texto-suave pequeno">Depois de criar, diga na ficha quais peças formam o kit. A baixa dessas peças no estoque chega com a Nova venda.</p>}
+        {kit && <p className="texto-suave pequeno">Depois de criar, diga na ficha quais peças formam o kit. O kit não tem estoque próprio: ele usa o estoque dessas peças.</p>}
+
+        {!kit && qtd > 0 && qtd <= MAX_GRADE && (
+          <div className="campo">
+            <span>{qtd === 1 ? 'Quantas tem na loja agora (opcional)' : 'Quantas tem de cada, agora (opcional)'}</span>
+            {qtd === 1 ? (
+              <input inputMode="numeric" value={quantidades[0] ?? ''} onChange={(e) => setQuantidades({ 0: filtroInteiro(e.target.value) })} placeholder="0" aria-label="Quantidade em estoque" />
+            ) : (
+              <div className="quantidades-variacoes">
+                {combinacoes.map((c, i) => (
+                  <label key={i} className="campo">
+                    <span title={descreverVariacao(c)}>{descreverVariacao(c)}</span>
+                    <input inputMode="numeric" value={quantidades[i] ?? ''} onChange={(e) => setQuantidades({ ...quantidades, [i]: filtroInteiro(e.target.value) })} placeholder="0" />
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {!kit && qtd > MAX_GRADE && <p className="texto-suave pequeno">São muitas variações para digitar aqui: a quantidade de cada uma entra depois, em Estoque → Entrada ou Contagem.</p>}
+        {comLote && (
+          <div className="grade-campos">
+            <label className="campo"><span>Lote dessas peças (opcional)</span><input value={f.numero_lote} onChange={(e) => mudar({ numero_lote: e.target.value })} maxLength={TAMANHO.lote} /></label>
+            <label className="campo"><span>Validade (opcional)</span><input type="date" value={f.validade} onChange={(e) => mudar({ validade: e.target.value })} /></label>
+          </div>
+        )}
 
         <Aviso tom={qtd > LIMITE.variacoes ? 'vinho' : 'oliva'}>
           Vai criar <strong>{qtd} {qtd === 1 ? 'variação' : 'variações'}</strong>, todas com o mesmo preço. Dá para mudar o preço de cada uma depois.

@@ -41,7 +41,7 @@ export function Metrica({ rotulo, valor, detalhe }) {
   )
 }
 
-export function CampoBusca({ valor, aoMudar, placeholder = 'Buscar', autoFocus, grande }) {
+export function CampoBusca({ valor, aoMudar, placeholder = 'Buscar', autoFocus, grande, aoEnter }) {
   return (
     <label className={`campo-busca ${grande ? 'grande' : ''}`}>
       <Icone nome="busca" tamanho={grande ? 22 : 18} />
@@ -49,6 +49,7 @@ export function CampoBusca({ valor, aoMudar, placeholder = 'Buscar', autoFocus, 
         type="search"
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}
+        onKeyDown={aoEnter && ((e) => { if (e.key === 'Enter') { e.preventDefault(); aoEnter() } })}
         placeholder={placeholder}
         autoFocus={autoFocus}
         aria-label={placeholder}
@@ -77,6 +78,14 @@ export function SeletorVariacao({ escolhida, aoEscolher, opcoes }) {
   const [texto, setTexto] = useState('')
   const resultados = useMemo(() => buscarVariacoes(linhas, texto), [linhas, texto])
 
+  // leitor de código de barras: digita o código e aperta Enter sozinho
+  function aoEnter() {
+    const codigo = texto.trim()
+    const exata = linhas.find((l) => codigo && (l.codigo_barras === codigo || l.sku === codigo))
+    const escolha = exata || (resultados.length === 1 ? resultados[0] : null)
+    if (escolha) { aoEscolher(escolha); setTexto('') }
+  }
+
   if (escolhida) {
     return (
       <div className="seletor-escolhido">
@@ -90,7 +99,7 @@ export function SeletorVariacao({ escolhida, aoEscolher, opcoes }) {
   }
   return (
     <div className="seletor">
-      <CampoBusca valor={texto} aoMudar={setTexto} placeholder="Produto, cor, tamanho ou código" />
+      <CampoBusca valor={texto} aoMudar={setTexto} aoEnter={aoEnter} placeholder="Produto, cor, tamanho ou código" />
       {resultados.length > 0 && (
         <ul className="lista-opcoes">
           {resultados.map((l) => (

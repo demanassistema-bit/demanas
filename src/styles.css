@@ -556,3 +556,12 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .botao-arquivo { cursor: pointer; align-self: flex-start; }
 .linha-botao { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .variacao.inativo { opacity: 0.55; }
+
+/* Estoque (Etapa 3) */
+.pilha { display: flex; flex-direction: column; gap: 16px; }
+.contagem-lotes { display: flex; flex-direction: column; gap: 8px; }
+.contagem-lote { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.contagem-lote input { width: 110px; }
+.lotes-variacao { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.quantidades-variacoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.quantidades-variacoes .campo span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
