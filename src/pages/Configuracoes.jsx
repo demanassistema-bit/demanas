@@ -44,6 +44,16 @@ export default function Configuracoes() {
       </section>
 
       <section className="cartao secao">
+        <h2>Relatórios</h2>
+        <p className="texto-suave pequeno">Usados no "O que recomprar" e nas peças paradas. Ajuste conforme o prazo dos fornecedores.</p>
+        <div className="grade-campos">
+          <NumeroEmpresa nome="Avisar para recomprar quando o estoque dura menos de (dias)" atual={Number(parametros.recomprar_dias_alerta ?? 15)} min={1} max={180} aoSalvar={(n) => executar(cat.salvarParametro('recomprar_dias_alerta', n))} />
+          <NumeroEmpresa nome="Sugerir pedir o suficiente para (dias)" atual={Number(parametros.recomprar_dias_cobertura ?? 30)} min={1} max={365} aoSalvar={(n) => executar(cat.salvarParametro('recomprar_dias_cobertura', n))} />
+          <NumeroEmpresa nome="Peça parada: sem vender há (dias)" atual={Number(parametros.dias_peca_parada ?? 45)} min={7} max={365} aoSalvar={(n) => executar(cat.salvarParametro('dias_peca_parada', n))} />
+        </div>
+      </section>
+
+      <section className="cartao secao">
         <h2>Devolução: peça que não volta ao estoque</h2>
         <p className="texto-suave pequeno">Marque as categorias de higiene (calcinha, peça íntima): na devolução, a peça vem marcada para não voltar à prateleira.</p>
         {categorias.length === 0 ? <p className="texto-suave pequeno">As categorias aparecem aqui quando os produtos forem cadastrados.</p> : categorias.map((k) => (
@@ -87,7 +97,7 @@ export default function Configuracoes() {
 
       <section className="cartao secao">
         <h2>Dados de exemplo</h2>
-        <p className="texto-suave pequeno">A nota fiscal e os relatórios ainda usam dados de exemplo, guardados só neste aparelho. Este botão volta esses exemplos ao início. Não mexe em nada do que já é de verdade (produtos, estoque, vendas, clientes, encomendas e financeiro).</p>
+        <p className="texto-suave pequeno">Só a nota fiscal ainda usa dados de exemplo, guardados neste aparelho. Este botão volta esses exemplos ao início. Não mexe em nada do que já é de verdade.</p>
         {restaurado ? <Aviso tom="oliva">Dados de exemplo restaurados.</Aviso> : (
           <BotaoPerigo texto="Restaurar dados de exemplo" aoConfirmar={() => { restaurar(); setRestaurado(true) }} />
         )}
@@ -153,7 +163,7 @@ function NumeroEmpresa({ nome, atual, min, max, aoSalvar }) {
   return (
     <label className="campo">
       <span>{nome}</span>
-      <input inputMode="numeric" value={texto} onChange={(e) => setTexto(filtroInteiro(e.target.value, 2))} onBlur={salvar} />
+      <input inputMode="numeric" value={texto} onChange={(e) => setTexto(filtroInteiro(e.target.value, String(max).length))} onBlur={salvar} />
       {erro && <small className="texto-alerta">{erro}</small>}
     </label>
   )

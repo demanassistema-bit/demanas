@@ -10,6 +10,7 @@ import { deISO, diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte, paraISO, som
 import Icone from '../components/Icone'
 import { Metrica, Selo, seloValidade, Vazio } from '../components/ui'
 import { aniversarioNoMes, situacaoEncomenda, textoItem } from '../lib/clientes'
+import { useAnaliseEstoque } from './Relatorios'
 
 function saudacao() {
   const h = new Date().getHours()
@@ -61,6 +62,9 @@ export default function Inicio() {
     }
   }, [vendasMes, custoMes, hoje])
 
+  // o que recomprar: as que vendem e acabam antes do prazo (Relatórios)
+  const { analise } = useAnaliseEstoque()
+  const recomprar = (analise || []).filter((l) => l.recomprar).sort((a, b) => a.cobertura - b.cobertura)
   const acabando = catalogo.linhas
     .filter((l) => l.ativo && l.produto.tipo !== 'kit' && l.saldo <= l.estoque_minimo)
     .sort((a, b) => a.saldo - b.saldo)
@@ -114,6 +118,25 @@ export default function Inicio() {
                   <Link to={`/produtos/${l.produto_id}`} className="linha-lista">
                     <span><strong>{l.produto.nome}</strong><small>{l.nomeVariacao}</small></span>
                     <Selo tom={l.saldo <= 0 ? 'vinho' : 'ambar'}>{l.saldo <= 0 ? 'Zerado' : `${l.saldo} un`}</Selo>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="cartao bloco">
+          <header className="bloco-topo">
+            <h2>Recomprar</h2>
+            <Link to="/relatorios" className="botao-link">Ver tudo</Link>
+          </header>
+          {!analise ? <p className="texto-suave pequeno">Carregando…</p> : recomprar.length === 0 ? <Vazio icone="confirmar" titulo="Nada para recomprar agora" /> : (
+            <ul className="lista">
+              {recomprar.slice(0, 5).map((l) => (
+                <li key={l.id}>
+                  <Link to={`/produtos/${l.produto_id}`} className="linha-lista">
+                    <span><strong>{l.produto.nome}</strong><small>{l.nomeVariacao} · pedir {l.pedir}</small></span>
+                    <Selo tom={l.cobertura <= 3 ? 'vinho' : 'ambar'}>{l.cobertura === 0 ? 'acabou' : `dura ${l.cobertura} d`}</Selo>
                   </Link>
                 </li>
               ))}
