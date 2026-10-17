@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
-import { formatarMoeda, lerMoeda } from '../lib/moeda'
+import { formatarMoeda } from '../lib/moeda'
+import { filtroDinheiro, filtroInteiro, lerInteiro, lerValor, limparTexto, LIMITE, separarLista, TAMANHO } from '../lib/limites'
 import { normalizar } from '../demo/regras'
 import Modal from '../components/Modal'
 import Icone from '../components/Icone'
 import { Aviso, CampoBusca, Selo, Vazio } from '../components/ui'
 
 const TIPOS = { todos: 'Todos', lingerie: 'Lingerie', cosmetico: 'Cosméticos' }
-const separar = (t) => t.split(',').map((x) => x.trim()).filter(Boolean)
 
 export default function Produtos() {
   const { dados, linhas, ehProprietaria } = useDemo()
@@ -103,21 +103,31 @@ function NovoProduto({ aoFechar }) {
   const categorias = [...new Set(dados.produtos.map((p) => p.categoria))]
   const marcas = [...new Set(dados.produtos.map((p) => p.marca))]
 
-  const cores = separar(f.cores)
-  const tamanhos = separar(f.tamanhos)
-  const tonalidades = separar(f.tonalidades)
+  const cores = separarLista(f.cores)
+  const tamanhos = separarLista(f.tamanhos)
+  const tonalidades = separarLista(f.tonalidades)
   const qtdVariacoes = f.tipo === 'lingerie' ? Math.max(cores.length, 1) * Math.max(tamanhos.length, 1) : Math.max(tonalidades.length, 1)
 
   function salvar(e) {
     e.preventDefault()
-    const preco = lerMoeda(f.preco)
-    const custo = lerMoeda(f.custo) || 0
-    if (!f.nome.trim()) return setErro('Dê um nome ao produto.')
-    if (!preco || Number.isNaN(preco)) return setErro('Informe o preço de venda.')
+    const nome = limparTexto(f.nome)
+    if (nome.length < 2) return setErro('Dê um nome ao produto.')
+    const repetido = dados.produtos.find((p) => p.ativo && limparTexto(p.nome).toLocaleLowerCase('pt-BR') === nome.toLocaleLowerCase('pt-BR'))
+    if (repetido) return setErro(`Já existe um produto chamado "${repetido.nome}". Use outro nome, ou abra o que já existe.`)
+    const preco = lerValor(f.preco, { rotulo: 'o preço de venda', max: LIMITE.preco })
+    if (preco.erro) return setErro(preco.erro)
+    const custo = lerValor(f.custo, { rotulo: 'o custo', min: 0, max: LIMITE.preco, obrigatorio: false })
+    if (custo.erro) return setErro(custo.erro)
+    if (custo.valor > preco.valor) return setErro('O custo está maior que o preço de venda. Confira os dois valores.')
+    const minimo = lerInteiro(f.minimo, { rotulo: 'o estoque mínimo', min: 0, max: LIMITE.estoqueMinimo, obrigatorio: false })
+    if (minimo.erro) return setErro(minimo.erro)
+    const grande = [...cores, ...tamanhos, ...tonalidades].find((x) => x.length > TAMANHO.variacao)
+    if (grande) return setErro(`"${grande}" é longo demais para uma cor, tamanho ou tonalidade (até ${TAMANHO.variacao} letras). Separe com vírgula.`)
+    if (qtdVariacoes > LIMITE.variacoes) return setErro(`São ${qtdVariacoes} variações: o limite é ${LIMITE.variacoes} por produto. Divida em mais de um produto.`)
     const id = criarProduto({
-      nome: f.nome.trim(), tipo: f.tipo, categoria: f.categoria.trim() || 'Sem categoria', marca: f.marca.trim() || 'Sem marca', empresa_id: f.empresa_id,
-      preco, custo, estoque_minimo: Number(f.minimo) || 0, cores, tamanhos, tonalidades,
-      volume: f.volume.trim(), controla_validade: f.tipo === 'cosmetico' && f.controla_validade,
+      nome, tipo: f.tipo, categoria: limparTexto(f.categoria) || 'Sem categoria', marca: limparTexto(f.marca) || 'Sem marca', empresa_id: f.empresa_id,
+      preco: preco.valor, custo: custo.valor, estoque_minimo: minimo.valor, cores, tamanhos, tonalidades,
+      volume: limparTexto(f.volume), controla_validade: f.tipo === 'cosmetico' && f.controla_validade,
     })
     navegar(`/produtos/${id}`)
   }
@@ -142,32 +152,32 @@ function NovoProduto({ aoFechar }) {
             ))}
           </div>
         </div>
-        <label className="campo"><span>Nome do produto</span><input value={f.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder={f.tipo === 'lingerie' ? 'Ex.: Sutiã renda Aurora' : 'Ex.: Batom matte Veludo'} autoFocus /></label>
+        <label className="campo"><span>Nome do produto</span><input value={f.nome} onChange={(e) => mudar({ nome: e.target.value })} maxLength={TAMANHO.nome} placeholder={f.tipo === 'lingerie' ? 'Ex.: Sutiã renda Aurora' : 'Ex.: Batom matte Veludo'} autoFocus /></label>
         <div className="grade-campos">
-          <label className="campo"><span>Categoria</span><input list="categorias" value={f.categoria} onChange={(e) => mudar({ categoria: e.target.value })} /></label>
-          <label className="campo"><span>Marca</span><input list="marcas" value={f.marca} onChange={(e) => mudar({ marca: e.target.value })} /></label>
-          <label className="campo"><span>Preço de venda</span><input inputMode="decimal" value={f.preco} onChange={(e) => mudar({ preco: e.target.value })} placeholder="0,00" /></label>
-          <label className="campo"><span>Custo</span><input inputMode="decimal" value={f.custo} onChange={(e) => mudar({ custo: e.target.value })} placeholder="0,00" /></label>
-          <label className="campo"><span>Estoque mínimo</span><input inputMode="numeric" value={f.minimo} onChange={(e) => mudar({ minimo: e.target.value })} /></label>
+          <label className="campo"><span>Categoria</span><input list="categorias" value={f.categoria} onChange={(e) => mudar({ categoria: e.target.value })} maxLength={TAMANHO.categoria} /></label>
+          <label className="campo"><span>Marca</span><input list="marcas" value={f.marca} onChange={(e) => mudar({ marca: e.target.value })} maxLength={TAMANHO.marca} /></label>
+          <label className="campo"><span>Preço de venda</span><input inputMode="decimal" value={f.preco} onChange={(e) => mudar({ preco: filtroDinheiro(e.target.value) })} placeholder="0,00" /></label>
+          <label className="campo"><span>Custo</span><input inputMode="decimal" value={f.custo} onChange={(e) => mudar({ custo: filtroDinheiro(e.target.value) })} placeholder="0,00" /></label>
+          <label className="campo"><span>Estoque mínimo</span><input inputMode="numeric" value={f.minimo} onChange={(e) => mudar({ minimo: filtroInteiro(e.target.value, 3) })} /></label>
         </div>
         <datalist id="categorias">{categorias.map((c) => <option key={c} value={c} />)}</datalist>
         <datalist id="marcas">{marcas.map((m) => <option key={m} value={m} />)}</datalist>
 
         {f.tipo === 'lingerie' ? (
           <>
-            <label className="campo"><span>Cores, separadas por vírgula</span><input value={f.cores} onChange={(e) => mudar({ cores: e.target.value })} placeholder="Preto, Nude, Vinho" /></label>
-            <label className="campo"><span>Tamanhos, separados por vírgula</span><input value={f.tamanhos} onChange={(e) => mudar({ tamanhos: e.target.value })} placeholder="P, M, G ou 40, 42, 44" /></label>
+            <label className="campo"><span>Cores, separadas por vírgula</span><input value={f.cores} onChange={(e) => mudar({ cores: e.target.value })} maxLength={TAMANHO.variacoes} placeholder="Preto, Nude, Vinho" /></label>
+            <label className="campo"><span>Tamanhos, separados por vírgula</span><input value={f.tamanhos} onChange={(e) => mudar({ tamanhos: e.target.value })} maxLength={TAMANHO.variacoes} placeholder="P, M, G ou 40, 42, 44" /></label>
           </>
         ) : (
           <>
-            <label className="campo"><span>Tonalidades ou fragrâncias (opcional)</span><input value={f.tonalidades} onChange={(e) => mudar({ tonalidades: e.target.value })} placeholder="Nude, Marsala" /></label>
-            <label className="campo"><span>Volume ou peso</span><input value={f.volume} onChange={(e) => mudar({ volume: e.target.value })} placeholder="200 ml" /></label>
+            <label className="campo"><span>Tonalidades ou fragrâncias (opcional)</span><input value={f.tonalidades} onChange={(e) => mudar({ tonalidades: e.target.value })} maxLength={TAMANHO.variacoes} placeholder="Nude, Marsala" /></label>
+            <label className="campo"><span>Volume ou peso</span><input value={f.volume} onChange={(e) => mudar({ volume: e.target.value })} maxLength={TAMANHO.volume} placeholder="200 ml" /></label>
             {f.tipo === 'cosmetico' && (
               <label className="campo-check"><input type="checkbox" checked={f.controla_validade} onChange={(e) => mudar({ controla_validade: e.target.checked })} /> Controlar lote e validade</label>
             )}
           </>
         )}
-        <Aviso tom="oliva">
+        <Aviso tom={qtdVariacoes > LIMITE.variacoes ? 'vinho' : 'oliva'}>
           Vai criar <strong>{qtdVariacoes} {qtdVariacoes === 1 ? 'variação' : 'variações'}</strong>
           {f.tipo === 'lingerie' && cores.length > 0 && tamanhos.length > 0 && <> ({cores.length} cores × {tamanhos.length} tamanhos)</>}, todas com estoque zero.
           A quantidade entra depois, pela Entrada de estoque.

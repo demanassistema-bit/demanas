@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
-import { formatarMoeda, lerMoeda, paraCampoMoeda, arred } from '../lib/moeda'
+import { formatarMoeda, paraCampoMoeda, arred } from '../lib/moeda'
+import { erroData, filtroDinheiro, filtroInteiro, LIMITE, lerInteiro, lerValor, limparTexto, TAMANHO } from '../lib/limites'
 import { diasAte, formatarDataHora, hojeISO, paraISO, somarDias } from '../lib/datas'
 import { encomendasDaVariacao, normalizar, TIPOS_MOVIMENTO } from '../demo/regras'
 import { Aviso, CampoBusca, Selo, SeletorVariacao, seloValidade, Vazio } from '../components/ui'
@@ -103,6 +104,7 @@ function Situacao() {
 
 function Entrada() {
   const { dados, registrarEntrada, linhas, clientePorId } = useDemo()
+  const validadeMax = paraISO(somarDias(new Date(), 365 * 10))
   const [escolhidaId, setEscolhidaId] = useState(null)
   const escolhida = linhas.find((l) => l.id === escolhidaId)
   const [f, setF] = useState({ quantidade: '', custo: '', lote: '', validade: paraISO(somarDias(new Date(), 365)), fornecedor: '' })
@@ -118,15 +120,21 @@ function Entrada() {
   function salvar(e) {
     e.preventDefault()
     setErro('')
-    const quantidade = Number(f.quantidade)
-    const custo = lerMoeda(f.custo)
     if (!escolhida) return setErro('Escolha o produto.')
-    if (!Number.isInteger(quantidade) || quantidade <= 0) return setErro('Informe uma quantidade inteira maior que zero.')
-    if (custo == null || Number.isNaN(custo)) return setErro('Informe o custo de cada peça.')
-    if (escolhida.produto.controla_validade && (!f.validade || f.validade < hojeISO())) return setErro('Informe uma validade futura.')
+    const qtd = lerInteiro(f.quantidade)
+    if (qtd.erro) return setErro(qtd.erro)
+    const custoLido = lerValor(f.custo, { rotulo: 'o custo de cada peça', min: 0, max: LIMITE.preco })
+    if (custoLido.erro) return setErro(custoLido.erro)
+    if (escolhida.produto.controla_validade) {
+      const erroValidade = erroData(f.validade, { rotulo: 'a validade', min: paraISO(somarDias(new Date(), 1)), max: validadeMax })
+      if (erroValidade) return setErro(`${erroValidade} Ela precisa ser depois de hoje e em até 10 anos.`)
+    }
+    const quantidade = qtd.valor
+    const custo = custoLido.valor
+    const fornecedor = limparTexto(f.fornecedor)
     registrarEntrada({
-      variacao_id: escolhida.id, quantidade, custo, numero_lote: f.lote.trim(), validade: f.validade,
-      motivo: f.fornecedor.trim() ? `Compra de ${f.fornecedor.trim()}` : 'Entrada de mercadoria',
+      variacao_id: escolhida.id, quantidade, custo, numero_lote: limparTexto(f.lote), validade: f.validade,
+      motivo: fornecedor ? `Compra de ${fornecedor}` : 'Entrada de mercadoria',
     })
     const esperando = encomendasDaVariacao(dados.encomendas || [], escolhida.id)
     const donas = esperando.map((e) => clientePorId.get(e.cliente_id)?.nome.split(' ')[0]).filter(Boolean)
@@ -140,13 +148,13 @@ function Entrada() {
       <h2>Entrada de mercadoria</h2>
       <SeletorVariacao escolhida={escolhida} aoEscolher={escolher} />
       <div className="grade-campos">
-        <label className="campo"><span>Quantidade</span><input inputMode="numeric" value={f.quantidade} onChange={(e) => setF({ ...f, quantidade: e.target.value })} /></label>
-        <label className="campo"><span>Custo de cada peça</span><input inputMode="decimal" value={f.custo} onChange={(e) => setF({ ...f, custo: e.target.value })} /></label>
-        <label className="campo"><span>Fornecedor (opcional)</span><input value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} /></label>
+        <label className="campo"><span>Quantidade</span><input inputMode="numeric" value={f.quantidade} onChange={(e) => setF({ ...f, quantidade: filtroInteiro(e.target.value) })} /></label>
+        <label className="campo"><span>Custo de cada peça</span><input inputMode="decimal" value={f.custo} onChange={(e) => setF({ ...f, custo: filtroDinheiro(e.target.value) })} /></label>
+        <label className="campo"><span>Fornecedor (opcional)</span><input value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} maxLength={TAMANHO.fornecedor} /></label>
         {escolhida?.produto.controla_validade && (
           <>
-            <label className="campo"><span>Número do lote</span><input value={f.lote} onChange={(e) => setF({ ...f, lote: e.target.value })} /></label>
-            <label className="campo"><span>Validade</span><input type="date" value={f.validade} onChange={(e) => setF({ ...f, validade: e.target.value })} /></label>
+            <label className="campo"><span>Número do lote</span><input value={f.lote} onChange={(e) => setF({ ...f, lote: e.target.value })} maxLength={TAMANHO.lote} /></label>
+            <label className="campo"><span>Validade</span><input type="date" min={hojeISO()} max={validadeMax} value={f.validade} onChange={(e) => setF({ ...f, validade: e.target.value })} /></label>
           </>
         )}
       </div>
@@ -161,7 +169,7 @@ function Entrada() {
 const TIPOS_AJUSTE = ['ajuste_inventario', 'perda', 'brinde', 'uso_interno', 'devolucao_fornecedor']
 
 function Ajuste() {
-  const { registrarAjuste, linhas } = useDemo()
+  const { dados, registrarAjuste, linhas } = useDemo()
   const [escolhidaId, setEscolhidaId] = useState(null)
   const escolhida = linhas.find((l) => l.id === escolhidaId)
   const [tipo, setTipo] = useState('ajuste_inventario')
@@ -174,11 +182,17 @@ function Ajuste() {
   function salvar(e) {
     e.preventDefault()
     setErro(''); setFeito('')
-    const n = Number(numero)
     if (!escolhida) return setErro('Escolha o produto.')
-    if (!Number.isInteger(n) || n < 0 || (!contagem && n === 0)) return setErro(contagem ? 'Informe quantas peças você contou.' : 'Informe a quantidade.')
-    if (!motivo.trim()) return setErro('O motivo é obrigatório: fica registrado no histórico.')
-    const r = registrarAjuste({ variacao_id: escolhida.id, tipo, quantidade: n, contado: n, motivo: motivo.trim() })
+    const lido = lerInteiro(numero, { rotulo: contagem ? 'quantas peças você contou' : 'a quantidade', min: contagem ? 0 : 1 })
+    if (lido.erro) return setErro(lido.erro)
+    const n = lido.valor
+    // não deixa sair mais do que tem (o estoque ficaria negativo)
+    if (!contagem && !dados.config.permitirEstoqueNegativo && n > Math.max(escolhida.saldo, 0)) {
+      return setErro(`O sistema tem só ${Math.max(escolhida.saldo, 0)} em estoque desta peça. Se o número real é outro, faça antes uma Contagem.`)
+    }
+    const textoMotivo = limparTexto(motivo)
+    if (textoMotivo.length < 3) return setErro('O motivo é obrigatório: fica registrado no histórico.')
+    const r = registrarAjuste({ variacao_id: escolhida.id, tipo, quantidade: n, contado: n, motivo: textoMotivo })
     if (r?.semMudanca) setFeito('A contagem confere com o sistema. Nada a ajustar.')
     else setFeito(`${TIPOS_MOVIMENTO[tipo]} registrado: ${r.diferenca > 0 ? '+' : ''}${r.diferenca}.`)
     setNumero(''); setMotivo('')
@@ -196,9 +210,9 @@ function Ajuste() {
       <div className="grade-campos">
         <label className="campo">
           <span>{contagem ? `Quantas peças você contou${escolhida ? ` (sistema diz ${escolhida.saldo})` : ''}` : 'Quantidade que saiu'}</span>
-          <input inputMode="numeric" value={numero} onChange={(e) => setNumero(e.target.value)} />
+          <input inputMode="numeric" value={numero} onChange={(e) => setNumero(filtroInteiro(e.target.value))} />
         </label>
-        <label className="campo"><span>Motivo</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder={contagem ? 'Ex.: inventário de outubro' : 'Ex.: peça com defeito'} /></label>
+        <label className="campo"><span>Motivo</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={TAMANHO.motivo} placeholder={contagem ? 'Ex.: inventário de outubro' : 'Ex.: peça com defeito'} /></label>
       </div>
       <p className="texto-suave pequeno">O sistema nunca apaga nem edita o estoque: lança uma movimentação nova com a diferença.</p>
       {erro && <Aviso tom="vinho">{erro}</Aviso>}

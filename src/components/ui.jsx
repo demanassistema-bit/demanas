@@ -4,6 +4,7 @@ import { useDemo } from '../demo/DemoContext'
 import { normalizar } from '../demo/regras'
 import { formatarMoeda } from '../lib/moeda'
 import { diasAte } from '../lib/datas'
+import { TAMANHO } from '../lib/limites'
 
 // Selo de situação em tons terrosos: 'ambar' | 'vinho' | 'oliva' | 'neutro'
 export function Selo({ tom = 'neutro', children }) {
@@ -51,6 +52,7 @@ export function CampoBusca({ valor, aoMudar, placeholder = 'Buscar', autoFocus, 
         placeholder={placeholder}
         autoFocus={autoFocus}
         aria-label={placeholder}
+        maxLength={TAMANHO.busca}
       />
     </label>
   )

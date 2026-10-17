@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { formatarMoeda, arred, FORMAS_PAGAMENTO, CANAIS } from '../lib/moeda'
+import { limparTexto, TAMANHO } from '../lib/limites'
 import { diaDe, diasDesde, formatarDataHora, hojeISO } from '../lib/datas'
 import { nomeVariacao } from '../demo/regras'
 import Modal, { BotaoPerigo } from '../components/Modal'
@@ -135,8 +136,8 @@ export default function Vendas() {
             <Aviso tom="vinho">Cancelada: {vendaAberta.motivo_cancelamento}. O estoque voltou por estorno, e a venda continua registrada.</Aviso>
           ) : ehProprietaria ? (
             <div className="cancelar">
-              <label className="campo"><span>Motivo do cancelamento</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: cliente desistiu" /></label>
-              <BotaoPerigo texto="Cancelar venda" disabled={!motivo.trim()} aoConfirmar={() => { cancelarVenda(vendaAberta.id, motivo.trim()); setMotivo('') }} />
+              <label className="campo"><span>Motivo do cancelamento</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={TAMANHO.motivo} placeholder="Ex.: cliente desistiu" /></label>
+              <BotaoPerigo texto="Cancelar venda" disabled={limparTexto(motivo).length < 3} aoConfirmar={() => { cancelarVenda(vendaAberta.id, limparTexto(motivo)); setMotivo('') }} />
               <p className="texto-suave pequeno">Cancelar não apaga a venda: devolve as peças ao estoque com um estorno e guarda o motivo.</p>
             </div>
           ) : (

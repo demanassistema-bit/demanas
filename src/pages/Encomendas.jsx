@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
-import { formatarMoeda, lerMoeda, FORMAS_PAGAMENTO } from '../lib/moeda'
+import { formatarMoeda, FORMAS_PAGAMENTO } from '../lib/moeda'
 import { formatarData, hojeISO, paraISO, somarDias } from '../lib/datas'
+import { erroData, erroWhatsApp, filtroDinheiro, filtroTelefone, formatarWhatsApp, LIMITE, lerValor, limparTexto, linkWhatsApp as linkDoNumero, TAMANHO } from '../lib/limites'
 import { normalizar, situacaoEncomenda } from '../demo/regras'
 import Modal, { BotaoPerigo } from '../components/Modal'
 import Icone from '../components/Icone'
@@ -24,8 +25,7 @@ export function mensagemChegou(cliente, encomenda, linhaPorId) {
 }
 
 export function linkWhatsApp(cliente, texto) {
-  const numero = cliente?.whatsapp?.replace(/\D/g, '')
-  return `https://wa.me/${numero ? `55${numero}` : ''}?text=${encodeURIComponent(texto)}`
+  return linkDoNumero(cliente?.whatsapp, texto)
 }
 
 export default function Encomendas() {
@@ -37,6 +37,7 @@ export default function Encomendas() {
   const [nova, setNova] = useState(Boolean(novaPara))
   const [datas, setDatas] = useState({})
   const hoje = hojeISO()
+  const limiteData = paraISO(somarDias(new Date(), 365))
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const encomendas = dados.encomendas || []
 
@@ -91,7 +92,7 @@ export default function Encomendas() {
                     <button className="botao botao-secundario" onClick={() => atualizarEncomenda(e.id, { status: 'chegou', chegou_em: hoje })}><Icone nome="confirmar" tamanho={18} /> Chegou</button>
                     <label className="campo-data">
                       <span className="texto-suave pequeno">Nova data</span>
-                      <input type="date" value={datas[e.id] ?? e.previsao ?? ''} onChange={(ev) => { setDatas({ ...datas, [e.id]: ev.target.value }); atualizarEncomenda(e.id, { previsao: ev.target.value }) }} />
+                      <input type="date" value={datas[e.id] ?? e.previsao ?? ''} min={hoje} max={limiteData} onChange={(ev) => { setDatas({ ...datas, [e.id]: ev.target.value }); if (!erroData(ev.target.value, { min: hoje, max: limiteData })) atualizarEncomenda(e.id, { previsao: ev.target.value }) }} />
                     </label>
                     <BotaoPerigo texto="Cancelar" aoConfirmar={() => atualizarEncomenda(e.id, { status: 'cancelada', cancelada_em: hoje })} />
                   </div>
@@ -139,23 +140,42 @@ function NovaEncomenda({ variacaoInicial, aoFechar }) {
     ? dados.clientes.filter((c) => !c.removida && normalizar(`${c.nome} ${c.whatsapp}`).includes(normalizar(buscaCliente))).slice(0, 5)
     : []
 
+  const cheio = itens.length >= LIMITE.itensEncomenda
+  function adicionar(item) {
+    setErro('')
+    // a mesma peça do catálogo soma na quantidade, em vez de repetir a linha
+    const igual = item.variacao_id ? itens.findIndex((x) => x.variacao_id === item.variacao_id) : -1
+    if (igual >= 0) return mudarQuantidade(igual, 1)
+    if (cheio) return setErro(`Até ${LIMITE.itensEncomenda} peças diferentes por encomenda. Faça outra encomenda para o resto.`)
+    setItens([...itens, item])
+  }
+  function mudarQuantidade(n, delta) {
+    setItens(itens.map((x, j) => (j === n ? { ...x, quantidade: Math.min(x.quantidade + delta, LIMITE.quantidadeItem) } : x)).filter((x) => x.quantidade > 0))
+  }
   function adicionarLivre() {
-    if (!livre.trim()) return
-    setItens([...itens, { descricao: livre.trim(), quantidade: 1 }])
+    const descricao = limparTexto(livre)
+    if (descricao.length < 2) return
+    adicionar({ descricao, quantidade: 1 })
     setLivre('')
   }
 
   function salvar(e) {
     e.preventDefault()
-    let cliente_id = clienteId
-    if (!cliente_id && cadastro?.nome?.trim()) cliente_id = criarCliente({ nome: cadastro.nome.trim(), whatsapp: cadastro.whatsapp.trim() })
-    if (!cliente_id) return setErro('Escolha a cliente: é para ela que o lembrete vai.')
+    const nomeNovo = limparTexto(cadastro?.nome)
+    if (!clienteId && !nomeNovo) return setErro('Escolha a cliente: é para ela que o lembrete vai.')
+    if (!clienteId) {
+      const erroCadastro = nomeNovo.length < 2 ? 'Informe o nome da cliente.' : erroWhatsApp(dados.clientes, cadastro.whatsapp)
+      if (erroCadastro) return setErro(erroCadastro)
+    }
     if (!itens.length) return setErro('Adicione pelo menos uma peça.')
-    const valorSinal = temSinal ? lerMoeda(sinal.valor) : null
-    if (temSinal && (!valorSinal || valorSinal <= 0)) return setErro('Informe o valor do sinal.')
+    const erroPrevisao = erroData(previsao, { rotulo: 'a data prevista', min: hojeISO(), max: paraISO(somarDias(new Date(), 365)), obrigatoria: false })
+    if (erroPrevisao) return setErro(`${erroPrevisao} Ela precisa ser de hoje até um ano para a frente.`)
+    const valorSinal = temSinal ? lerValor(sinal.valor, { rotulo: 'o valor do sinal' }) : { valor: null }
+    if (valorSinal.erro) return setErro(valorSinal.erro)
+    const cliente_id = clienteId || criarCliente({ nome: nomeNovo, whatsapp: formatarWhatsApp(cadastro.whatsapp) })
     criarEncomenda({
-      cliente_id, itens, previsao, observacao: observacao.trim(),
-      sinal: temSinal ? { valor: valorSinal, forma: sinal.forma } : null,
+      cliente_id, itens, previsao, observacao: limparTexto(observacao),
+      sinal: temSinal ? { valor: valorSinal.valor, forma: sinal.forma } : null,
     })
     aoFechar()
   }
@@ -172,8 +192,8 @@ function NovaEncomenda({ variacaoInicial, aoFechar }) {
             </div>
           ) : cadastro ? (
             <div className="grade-campos">
-              <label className="campo"><span>Nome</span><input value={cadastro.nome} onChange={(e) => setCadastro({ ...cadastro, nome: e.target.value })} autoFocus /></label>
-              <label className="campo"><span>WhatsApp</span><input inputMode="tel" value={cadastro.whatsapp} onChange={(e) => setCadastro({ ...cadastro, whatsapp: e.target.value })} placeholder="(00) 00000-0000" /></label>
+              <label className="campo"><span>Nome</span><input value={cadastro.nome} onChange={(e) => setCadastro({ ...cadastro, nome: e.target.value })} maxLength={TAMANHO.nome} autoFocus /></label>
+              <label className="campo"><span>WhatsApp</span><input inputMode="tel" value={cadastro.whatsapp} onChange={(e) => setCadastro({ ...cadastro, whatsapp: filtroTelefone(e.target.value) })} placeholder="(00) 00000-0000" /></label>
             </div>
           ) : (
             <>
@@ -183,7 +203,7 @@ function NovaEncomenda({ variacaoInicial, aoFechar }) {
                   {encontrados.map((c) => <li key={c.id}><button type="button" onClick={() => { setClienteId(c.id); setBuscaCliente('') }}><span><strong>{c.nome}</strong><small>{c.whatsapp}</small></span></button></li>)}
                 </ul>
               )}
-              <button type="button" className="botao-link" onClick={() => setCadastro({ nome: buscaCliente, whatsapp: '' })}><Icone nome="somar" tamanho={16} /> Cadastro rápido</button>
+              <button type="button" className="botao-link" onClick={() => setCadastro({ nome: buscaCliente.slice(0, TAMANHO.nome), whatsapp: '' })}><Icone nome="somar" tamanho={16} /> Cadastro rápido</button>
             </>
           )}
         </div>
@@ -196,30 +216,30 @@ function NovaEncomenda({ variacaoInicial, aoFechar }) {
                 <li key={n} className="linha-lista">
                   <span>{textoItem(i, linhaPorId)}</span>
                   <span className="quantidade">
-                    <button type="button" className="botao-icone" onClick={() => setItens(itens.map((x, j) => (j === n ? { ...x, quantidade: x.quantidade - 1 } : x)).filter((x) => x.quantidade > 0))} aria-label="Diminuir"><Icone nome={i.quantidade === 1 ? 'lixo' : 'subtrair'} tamanho={16} /></button>
+                    <button type="button" className="botao-icone" onClick={() => mudarQuantidade(n, -1)} aria-label="Diminuir"><Icone nome={i.quantidade === 1 ? 'lixo' : 'subtrair'} tamanho={16} /></button>
                     <span>{i.quantidade}</span>
-                    <button type="button" className="botao-icone" onClick={() => setItens(itens.map((x, j) => (j === n ? { ...x, quantidade: x.quantidade + 1 } : x)))} aria-label="Aumentar"><Icone nome="somar" tamanho={16} /></button>
+                    <button type="button" className="botao-icone" onClick={() => mudarQuantidade(n, 1)} disabled={i.quantidade >= LIMITE.quantidadeItem} aria-label="Aumentar"><Icone nome="somar" tamanho={16} /></button>
                   </span>
                 </li>
               ))}
             </ul>
           )}
-          <SeletorVariacao escolhida={null} aoEscolher={(l) => l && setItens([...itens, { variacao_id: l.id, quantidade: 1 }])} />
+          <SeletorVariacao escolhida={null} aoEscolher={(l) => l && adicionar({ variacao_id: l.id, quantidade: 1 })} />
           <div className="linha-campos">
-            <input className="campo-solto" value={livre} onChange={(e) => setLivre(e.target.value)} placeholder="Ou descreva uma peça que não está no catálogo" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarLivre() } }} />
+            <input className="campo-solto" value={livre} onChange={(e) => setLivre(e.target.value)} maxLength={TAMANHO.descricao} placeholder="Ou descreva uma peça que não está no catálogo" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarLivre() } }} />
             <button type="button" className="botao botao-fantasma" onClick={adicionarLivre}>Adicionar</button>
           </div>
         </div>
 
         <div className="grade-campos">
-          <label className="campo"><span>Quando deve chegar</span><input type="date" value={previsao} onChange={(e) => setPrevisao(e.target.value)} /></label>
-          <label className="campo"><span>Observação (opcional)</span><input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex.: pedir na Dália" /></label>
+          <label className="campo"><span>Quando deve chegar</span><input type="date" min={hojeISO()} max={paraISO(somarDias(new Date(), 365))} value={previsao} onChange={(e) => setPrevisao(e.target.value)} /></label>
+          <label className="campo"><span>Observação (opcional)</span><input value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={TAMANHO.observacao} placeholder="Ex.: pedir na Dália" /></label>
         </div>
 
         <label className="campo-check"><input type="checkbox" checked={temSinal} onChange={(e) => setTemSinal(e.target.checked)} /> A cliente pagou um sinal</label>
         {temSinal && (
           <div className="grade-campos">
-            <label className="campo"><span>Valor do sinal</span><input inputMode="decimal" value={sinal.valor} onChange={(e) => setSinal({ ...sinal, valor: e.target.value })} /></label>
+            <label className="campo"><span>Valor do sinal</span><input inputMode="decimal" value={sinal.valor} onChange={(e) => setSinal({ ...sinal, valor: filtroDinheiro(e.target.value) })} /></label>
             <label className="campo"><span>Pago em</span>
               <select value={sinal.forma} onChange={(e) => setSinal({ ...sinal, forma: e.target.value })}>
                 {Object.entries(FORMAS_PAGAMENTO).filter(([k]) => k !== 'crediario').map(([k, n]) => <option key={k} value={k}>{n}</option>)}

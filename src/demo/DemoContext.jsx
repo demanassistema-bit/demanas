@@ -68,6 +68,8 @@ export function DemoProvider({ children }) {
 
   // ---------------- Ações ----------------
   const novoId = (d, prefixo) => { d.seq += 1; return `${prefixo}${d.seq}` }
+  // código único mesmo quando vários registros nascem no mesmo milissegundo (parcelas de uma conta)
+  const idUnico = (prefixo) => `${prefixo}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   const agoraISO = () => new Date().toISOString()
 
   // Gera as saídas de uma variação (pela validade mais próxima, se for cosmético)
@@ -259,7 +261,7 @@ export function DemoProvider({ children }) {
     setDados((d) => ({
       ...d,
       caixas: d.caixas.map((c) => (c.dia === dia && !c.fechadoEm
-        ? { ...c, lancamentos: [...c.lancamentos, { id: `l${Date.now()}`, tipo, valor, motivo, hora: agoraISO(), usuario }] }
+        ? { ...c, lancamentos: [...c.lancamentos, { id: idUnico('l'), tipo, valor, motivo, hora: agoraISO(), usuario }] }
         : c)),
     }))
   }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -274,7 +276,7 @@ export function DemoProvider({ children }) {
   const criarConta = useCallback((campos) => {
     setDados((d) => ({
       ...d,
-      contasPagar: [...d.contasPagar, { id: `cp${Date.now()}`, fornecedor: '', observacao: '', pagoEm: null, ...campos }]
+      contasPagar: [...d.contasPagar, { id: idUnico('cp'), fornecedor: '', observacao: '', pagoEm: null, ...campos }]
         .sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
     }))
   }, [])
@@ -334,7 +336,7 @@ export function DemoProvider({ children }) {
 
   // ---------------- Encomendas (não mexem no estoque) ----------------
   const criarEncomenda = useCallback((campos) => {
-    const id = `enc${Date.now()}`
+    const id = idUnico('enc')
     setDados((d) => ({ ...d, encomendas: [...(d.encomendas || []), { id, status: 'aguardando', criado_em: agoraISO(), criado_por: usuario, ...campos }] }))
     return id
   }, [usuario]) // eslint-disable-line react-hooks/exhaustive-deps

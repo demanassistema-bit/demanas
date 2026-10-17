@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, CANAIS } from '../lib/moeda'
 import { diasDesde, formatarData, formatarDataHora, hojeISO, NOMES_MESES } from '../lib/datas'
+import { erroData, erroWhatsApp, filtroTelefone, formatarWhatsApp, limparTexto, linkWhatsApp, TAMANHO } from '../lib/limites'
 import { nomeVariacao, normalizar, podeApagarCliente, situacaoEncomenda } from '../demo/regras'
 import { textoItem } from './Encomendas'
 import Modal, { BotaoPerigo } from '../components/Modal'
@@ -95,29 +96,33 @@ export default function Clientes() {
 }
 
 function NovaCliente({ aoFechar }) {
-  const { criarCliente } = useDemo()
+  const { dados, criarCliente } = useDemo()
   const navegar = useNavigate()
   const [f, setF] = useState({ nome: '', whatsapp: '', nascimento: '', aceita_contato: true, sutia: '', calcinha: '', tom_pele: '' })
   const [erro, setErro] = useState('')
   function salvar(e) {
     e.preventDefault()
-    if (!f.nome.trim()) return setErro('Informe o nome.')
+    const nome = limparTexto(f.nome)
+    if (nome.length < 2) return setErro('Informe o nome.')
+    const erro = erroWhatsApp(dados.clientes, f.whatsapp)
+      || erroData(f.nascimento, { rotulo: 'o aniversário', max: hojeISO(), obrigatoria: false })
+    if (erro) return setErro(erro)
     const id = criarCliente({
-      nome: f.nome.trim(), whatsapp: f.whatsapp.trim(), nascimento: f.nascimento, aceita_contato: f.aceita_contato,
-      preferencias: { sutia: f.sutia, calcinha: f.calcinha, tom_pele: f.tom_pele },
+      nome, whatsapp: formatarWhatsApp(f.whatsapp), nascimento: f.nascimento, aceita_contato: f.aceita_contato,
+      preferencias: { sutia: limparTexto(f.sutia), calcinha: limparTexto(f.calcinha), tom_pele: limparTexto(f.tom_pele) },
     })
     navegar(`/clientes/${id}`)
   }
   return (
     <Modal titulo="Nova cliente" aoFechar={aoFechar} rodape={<><button className="botao botao-fantasma" onClick={aoFechar}>Cancelar</button><button className="botao botao-principal" form="form-cliente">Salvar</button></>}>
       <form id="form-cliente" className="formulario" onSubmit={salvar}>
-        <label className="campo"><span>Nome</span><input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} autoFocus /></label>
+        <label className="campo"><span>Nome</span><input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} maxLength={TAMANHO.nome} autoFocus /></label>
         <div className="grade-campos">
-          <label className="campo"><span>WhatsApp</span><input inputMode="tel" value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} placeholder="(00) 00000-0000" /></label>
-          <label className="campo"><span>Aniversário</span><input type="date" value={f.nascimento} onChange={(e) => setF({ ...f, nascimento: e.target.value })} /></label>
-          <label className="campo"><span>Tamanho de sutiã</span><input value={f.sutia} onChange={(e) => setF({ ...f, sutia: e.target.value })} /></label>
-          <label className="campo"><span>Tamanho de calcinha</span><input value={f.calcinha} onChange={(e) => setF({ ...f, calcinha: e.target.value })} /></label>
-          <label className="campo"><span>Tom de pele</span><input value={f.tom_pele} onChange={(e) => setF({ ...f, tom_pele: e.target.value })} /></label>
+          <label className="campo"><span>WhatsApp</span><input inputMode="tel" value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: filtroTelefone(e.target.value) })} placeholder="(00) 00000-0000" /></label>
+          <label className="campo"><span>Aniversário</span><input type="date" min="1900-01-01" max={hojeISO()} value={f.nascimento} onChange={(e) => setF({ ...f, nascimento: e.target.value })} /></label>
+          <label className="campo"><span>Tamanho de sutiã</span><input value={f.sutia} onChange={(e) => setF({ ...f, sutia: e.target.value })} maxLength={TAMANHO.preferencia} /></label>
+          <label className="campo"><span>Tamanho de calcinha</span><input value={f.calcinha} onChange={(e) => setF({ ...f, calcinha: e.target.value })} maxLength={TAMANHO.preferencia} /></label>
+          <label className="campo"><span>Tom de pele</span><input value={f.tom_pele} onChange={(e) => setF({ ...f, tom_pele: e.target.value })} maxLength={TAMANHO.preferencia} /></label>
         </div>
         <label className="campo-check"><input type="checkbox" checked={f.aceita_contato} onChange={(e) => setF({ ...f, aceita_contato: e.target.checked })} /> Aceita receber mensagens da loja</label>
         {erro && <Aviso tom="vinho">{erro}</Aviso>}
@@ -143,8 +148,7 @@ export function FichaCliente() {
   if (!c || c.removida) return <Navigate to="/clientes" replace />
 
   const primeiroNome = c.nome.split(' ')[0]
-  const numero = c.whatsapp?.replace(/\D/g, '')
-  const link = `https://wa.me/${numero ? `55${numero}` : ''}?text=${encodeURIComponent(MENSAGENS[modelo](primeiroNome))}`
+  const link = linkWhatsApp(c.whatsapp, MENSAGENS[modelo](primeiroNome))
   const prefs = c.preferencias || {}
   const compras = [...c.compras].reverse()
 

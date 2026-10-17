@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useDemo } from '../../demo/DemoContext'
 import { arred, formatarMoeda, lerMoeda } from '../../lib/moeda'
-import { diasAte, formatarData, hojeISO, paraISO, deISO } from '../../lib/datas'
+import { diasAte, formatarData, hojeISO } from '../../lib/datas'
+import { erroData, filtroDinheiro, filtroInteiro, LIMITE, lerInteiro, lerValor, limparTexto, somarMeses, TAMANHO } from '../../lib/limites'
 import { CATEGORIAS_DESPESA } from '../../demo/regras'
 import Modal, { BotaoPerigo } from '../../components/Modal'
 import Icone from '../../components/Icone'
@@ -89,20 +90,25 @@ function NovaConta({ aoFechar }) {
 
   function salvar(e) {
     e.preventDefault()
-    const valor = lerMoeda(f.valor)
-    const vezes = Math.min(Math.max(Number(f.vezes) || 1, 1), 24)
-    if (!f.descricao.trim()) return setErro('Descreva a conta.')
-    if (!valor || valor <= 0) return setErro('Informe o valor.')
-    if (!f.vencimento) return setErro('Informe o vencimento.')
-    const base = deISO(f.vencimento)
+    const descricao = limparTexto(f.descricao)
+    if (descricao.length < 2) return setErro('Descreva a conta.')
+    const lido = lerValor(f.valor, { rotulo: 'o valor' })
+    if (lido.erro) return setErro(lido.erro)
+    const parcelas = lerInteiro(f.vezes, { rotulo: 'o número de parcelas', max: LIMITE.parcelasConta, obrigatorio: false })
+    if (parcelas.erro) return setErro(parcelas.erro)
+    const valor = lido.valor
+    const vezes = parcelas.valor
+    // contas atrasadas podem ser lançadas, mas só até um ano para trás
+    const erroVenc = erroData(f.vencimento, { rotulo: 'o vencimento', min: somarMeses(hojeISO(), -12), max: somarMeses(hojeISO(), 60) })
+    if (erroVenc) return setErro(`${erroVenc} Use uma data entre um ano atrás e cinco anos para a frente.`)
+    if (valor / vezes < 0.01) return setErro('O valor é pequeno demais para tantas parcelas.')
     const valorParcela = arred(valor / vezes)
     for (let i = 0; i < vezes; i++) {
-      const venc = new Date(base.getFullYear(), base.getMonth() + i, base.getDate())
       criarConta({
-        descricao: vezes > 1 ? `${f.descricao.trim()} (${i + 1}/${vezes})` : f.descricao.trim(),
-        fornecedor: f.fornecedor.trim(), categoria: f.categoria,
+        descricao: vezes > 1 ? `${descricao} (${i + 1}/${vezes})` : descricao,
+        fornecedor: limparTexto(f.fornecedor), categoria: f.categoria,
         valor: i === vezes - 1 ? arred(valor - valorParcela * (vezes - 1)) : valorParcela,
-        vencimento: paraISO(venc),
+        vencimento: somarMeses(f.vencimento, i),
       })
     }
     aoFechar()
@@ -111,19 +117,19 @@ function NovaConta({ aoFechar }) {
   return (
     <Modal titulo="Nova conta a pagar" aoFechar={aoFechar} rodape={<><button className="botao botao-fantasma" onClick={aoFechar}>Cancelar</button><button className="botao botao-principal" form="form-conta">Salvar</button></>}>
       <form id="form-conta" className="formulario" onSubmit={salvar}>
-        <label className="campo"><span>Descrição</span><input value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} placeholder="Ex.: compra de sutiãs" autoFocus /></label>
+        <label className="campo"><span>Descrição</span><input value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} maxLength={TAMANHO.descricao} placeholder="Ex.: compra de sutiãs" autoFocus /></label>
         <div className="grade-campos">
-          <label className="campo"><span>Fornecedor (opcional)</span><input value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} /></label>
+          <label className="campo"><span>Fornecedor (opcional)</span><input value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} maxLength={TAMANHO.fornecedor} /></label>
           <label className="campo"><span>Categoria</span>
             <select value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })}>
               {Object.entries(CATEGORIAS_DESPESA).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
             </select>
           </label>
-          <label className="campo"><span>Valor total</span><input inputMode="decimal" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} /></label>
-          <label className="campo"><span>Primeiro vencimento</span><input type="date" value={f.vencimento} onChange={(e) => setF({ ...f, vencimento: e.target.value })} /></label>
-          <label className="campo"><span>Dividir em quantas vezes</span><input inputMode="numeric" value={f.vezes} onChange={(e) => setF({ ...f, vezes: e.target.value })} /></label>
+          <label className="campo"><span>Valor total</span><input inputMode="decimal" value={f.valor} onChange={(e) => setF({ ...f, valor: filtroDinheiro(e.target.value) })} /></label>
+          <label className="campo"><span>Primeiro vencimento</span><input type="date" min={somarMeses(hojeISO(), -12)} max={somarMeses(hojeISO(), 60)} value={f.vencimento} onChange={(e) => setF({ ...f, vencimento: e.target.value })} /></label>
+          <label className="campo"><span>Dividir em quantas vezes</span><input inputMode="numeric" value={f.vezes} onChange={(e) => setF({ ...f, vezes: filtroInteiro(e.target.value, 2) })} /></label>
         </div>
-        {Number(f.vezes) > 1 && lerMoeda(f.valor) > 0 && (
+        {Number(f.vezes) > 1 && Number(f.vezes) <= LIMITE.parcelasConta && lerMoeda(f.valor) > 0 && (
           <p className="texto-suave pequeno">{f.vezes} parcelas de {formatarMoeda(arred(lerMoeda(f.valor) / Number(f.vezes)))}, uma por mês.</p>
         )}
         {erro && <Aviso tom="vinho">{erro}</Aviso>}

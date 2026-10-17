@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda, FORMAS_PAGAMENTO, CANAIS } from '../lib/moeda'
 import { diasDesde } from '../lib/datas'
+import { erroWhatsApp, filtroDinheiro, filtroPercentual, filtroTelefone, formatarWhatsApp, LIMITE, limparTexto, linkWhatsApp, TAMANHO } from '../lib/limites'
 import { descontoPrecisaAprovacao, dividirDesconto, emiteNota, normalizar, percentual, taxaPagamento, taxasDe, totaisVenda } from '../demo/regras'
 import Icone from '../components/Icone'
 import { Aviso, buscarVariacoes, CampoBusca, Selo } from '../components/ui'
@@ -47,7 +48,7 @@ function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, f
           </div>
           <div className="linha-campos">
             {pagamentos.length > 1 && (
-              <input className="campo-solto" inputMode="decimal" value={p.valorTexto} onChange={(e) => mudar(i, { valorTexto: e.target.value })} aria-label="Valor" />
+              <input className="campo-solto" inputMode="decimal" value={p.valorTexto} onChange={(e) => mudar(i, { valorTexto: filtroDinheiro(e.target.value) })} aria-label="Valor" />
             )}
             {p.forma === 'cartao_credito' && (
               <select className="campo-solto" value={p.parcelas} onChange={(e) => mudar(i, { parcelas: Number(e.target.value) })} aria-label="Parcelas">
@@ -59,8 +60,10 @@ function BlocoPagamento({ titulo, subtitulo, total, pagamentos, setPagamentos, f
       ))}
       {dinheiroUnico && (
         <div className="linha-campos">
-          <label className="campo"><span>Valor recebido</span><input inputMode="decimal" value={recebido} onChange={(e) => setRecebido(e.target.value)} placeholder={paraCampoMoeda(total)} /></label>
-          {troco != null && troco >= 0 && <p className="troco">Troco: <strong>{formatarMoeda(troco)}</strong></p>}
+          <label className="campo"><span>Valor recebido</span><input inputMode="decimal" value={recebido} onChange={(e) => setRecebido(filtroDinheiro(e.target.value))} placeholder={paraCampoMoeda(total)} /></label>
+          {troco != null && (troco >= 0
+            ? <p className="troco">Troco: <strong>{formatarMoeda(troco)}</strong></p>
+            : <p className="texto-alerta pequeno">Recebeu menos que o total: faltam {formatarMoeda(-troco)}</p>)}
         </div>
       )}
       {pagamentos.length === 1
@@ -128,6 +131,8 @@ export default function NovaVenda() {
   const descontoDigitado = lerMoeda(descontoTexto) || 0
   const descontoReais = descontoModo === 'percentual' ? arred((subtotal * descontoDigitado) / 100) : descontoDigitado
   const { desconto, total } = totaisVenda(itens.map((i) => ({ preco: i.linha.preco, quantidade: i.quantidade })), descontoReais)
+  const descontoPassou = descontoReais > subtotal
+  const vendaZerada = itens.length > 0 && total <= 0
   const precisaAprovacao = descontoPrecisaAprovacao(subtotal, desconto, config.limiteDescontoVendedora, ehProprietaria) && !aprovado
 
   // A venda separada por CNPJ: cada parte paga na maquininha do seu CNPJ
@@ -155,6 +160,7 @@ export default function NovaVenda() {
     setErro('')
     const atual = carrinho.find((c) => c.variacao_id === linha.id)
     const qtd = (atual?.quantidade || 0) + 1
+    if (qtd > LIMITE.quantidadeItem) return setErro(`Até ${LIMITE.quantidadeItem} da mesma peça por venda.`)
     if (!config.permitirEstoqueNegativo && qtd > linha.saldo) {
       setErro(linha.saldo <= 0 ? `${linha.produto.nome} (${linha.nomeVariacao}) está sem estoque.` : `Só há ${linha.saldo} em estoque de ${linha.nomeVariacao}.`)
       return
@@ -173,6 +179,7 @@ export default function NovaVenda() {
     setErro('')
     const linha = linhaPorId.get(variacaoId)
     const atual = carrinho.find((c) => c.variacao_id === variacaoId)
+    if (delta > 0 && atual.quantidade + delta > LIMITE.quantidadeItem) return
     if (delta > 0 && !config.permitirEstoqueNegativo && atual.quantidade + delta > linha.saldo) {
       setErro(`Só há ${linha.saldo} em estoque de ${linha.nomeVariacao}.`)
       return
@@ -190,7 +197,10 @@ export default function NovaVenda() {
     const iniciais = Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()]))
     // sinal já pago na encomenda entra como a primeira forma de pagamento da primeira parte
     const sinal = encomenda?.sinal
-    if (sinal?.valor > 0 && partes[0] && sinal.valor < partes[0].total) {
+    if (sinal?.valor > 0 && partes[0] && sinal.valor >= partes[0].total) {
+      // o sinal cobre a parte toda (se passou, a diferença é devolvida à cliente)
+      iniciais[partes[0].chave] = [{ forma: sinal.forma, valorTexto: '', parcelas: 1, sinal: true }]
+    } else if (sinal?.valor > 0 && partes[0]) {
       iniciais[partes[0].chave] = [
         { forma: sinal.forma, valorTexto: paraCampoMoeda(sinal.valor), parcelas: 1, sinal: true },
         { forma: 'pix', valorTexto: paraCampoMoeda(arred(partes[0].total - sinal.valor)), parcelas: 1 },
@@ -202,15 +212,24 @@ export default function NovaVenda() {
 
   function concluir() {
     setErro('')
+    if (vendaZerada) return setErro('O desconto zerou a venda. Para dar a peça de presente, use "Brinde" em Estoque → Ajuste e perda.')
     if (!pagamentoFecha) return setErro('A soma das formas de pagamento precisa ser igual ao total de cada parte.')
     let cliente_id = clienteId
-    if (cadastro?.nome?.trim()) cliente_id = criarCliente({ nome: cadastro.nome.trim(), whatsapp: cadastro.whatsapp.trim() })
+    const nomeNovo = limparTexto(cadastro?.nome)
+    if (cadastro && nomeNovo) {
+      const erroCadastro = nomeNovo.length < 2 ? 'Informe o nome da cliente, ou cancele o cadastro.' : erroWhatsApp(dados.clientes, cadastro.whatsapp)
+      if (erroCadastro) return setErro(erroCadastro)
+      cliente_id = criarCliente({ nome: nomeNovo, whatsapp: formatarWhatsApp(cadastro.whatsapp) })
+      // se a venda não fechar (ex.: estoque), a cliente já fica escolhida e não é cadastrada de novo
+      setClienteId(cliente_id); setCadastro(null)
+    }
     const r = concluirVenda({
       partes: partes.map((p) => ({
         empresa_id: p.chave,
         itens: p.itens.map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })),
         desconto: p.desconto,
         pagamentos: valoresPagamento(pagamentosPor[p.chave], p.total)
+          .filter((p) => p.valor > 0)
           .map(({ forma, valor, parcelas }) => ({ forma, valor, parcelas: forma === 'cartao_credito' ? parcelas : 1 })),
       })),
       cliente_id, canal,
@@ -246,8 +265,7 @@ export default function NovaVenda() {
       `Total: ${formatarMoeda(totalGeral)}`,
       'Obrigada pela preferência! 🌹',
     ].filter(Boolean).join('\n')
-    const numero = cliente?.whatsapp?.replace(/\D/g, '')
-    const linkWhats = `https://wa.me/${numero ? `55${numero}` : ''}?text=${encodeURIComponent(recibo)}`
+    const linkWhats = linkWhatsApp(cliente?.whatsapp, recibo)
 
     return (
       <div className="pagina pagina-estreita">
@@ -303,8 +321,8 @@ export default function NovaVenda() {
             </div>
           ) : cadastro ? (
             <div className="grade-campos">
-              <label className="campo"><span>Nome</span><input value={cadastro.nome} onChange={(e) => setCadastro({ ...cadastro, nome: e.target.value })} autoFocus /></label>
-              <label className="campo"><span>WhatsApp</span><input inputMode="tel" value={cadastro.whatsapp} onChange={(e) => setCadastro({ ...cadastro, whatsapp: e.target.value })} placeholder="(00) 00000-0000" /></label>
+              <label className="campo"><span>Nome</span><input value={cadastro.nome} onChange={(e) => setCadastro({ ...cadastro, nome: e.target.value })} maxLength={TAMANHO.nome} autoFocus /></label>
+              <label className="campo"><span>WhatsApp</span><input inputMode="tel" value={cadastro.whatsapp} onChange={(e) => setCadastro({ ...cadastro, whatsapp: filtroTelefone(e.target.value) })} placeholder="(00) 00000-0000" /></label>
               <button className="botao-link" onClick={() => setCadastro(null)}>Cancelar cadastro</button>
             </div>
           ) : (
@@ -317,7 +335,7 @@ export default function NovaVenda() {
                   ))}
                 </ul>
               )}
-              <button className="botao-link" onClick={() => setCadastro({ nome: buscaCliente, whatsapp: '' })}><Icone nome="somar" tamanho={16} /> Cadastro rápido</button>
+              <button className="botao-link" onClick={() => setCadastro({ nome: buscaCliente.slice(0, TAMANHO.nome), whatsapp: '' })}><Icone nome="somar" tamanho={16} /> Cadastro rápido</button>
             </>
           )}
         </section>
@@ -336,11 +354,13 @@ export default function NovaVenda() {
           <div className="linha-campos">
             <div className="segmentado compacto">
               <button className={descontoModo === 'reais' ? 'ativo' : ''} onClick={() => setDescontoModo('reais')}>R$</button>
-              <button className={descontoModo === 'percentual' ? 'ativo' : ''} onClick={() => setDescontoModo('percentual')}>%</button>
+              <button className={descontoModo === 'percentual' ? 'ativo' : ''} onClick={() => { setDescontoModo('percentual'); setDescontoTexto(filtroPercentual(descontoTexto)) }}>%</button>
             </div>
-            <input className="campo-solto" inputMode="decimal" placeholder="0" value={descontoTexto} onChange={(e) => { setDescontoTexto(e.target.value); setAprovado(false); setPagamentosPor(Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()]))) }} aria-label="Desconto" />
+            <input className="campo-solto" inputMode="decimal" placeholder="0" value={descontoTexto} onChange={(e) => { setDescontoTexto(descontoModo === 'percentual' ? filtroPercentual(e.target.value) : filtroDinheiro(e.target.value)); setAprovado(false); setPagamentosPor(Object.fromEntries(partes.map((p) => [p.chave, pagamentoInicial()]))) }} aria-label="Desconto" />
           </div>
-          {desconto > 0 && <p className="texto-suave pequeno">{formatarMoeda(desconto)} · {formatarPercentual(percentual(desconto, subtotal))} do valor{duasEmpresas && ', dividido entre os dois CNPJs'}</p>}
+          {descontoPassou && <p className="texto-alerta pequeno">O desconto passa do valor da compra ({formatarMoeda(subtotal)}).</p>}
+          {vendaZerada && !descontoPassou && <Aviso tom="vinho">O desconto zerou a venda. Para dar a peça de presente, use "Brinde" em Estoque → Ajuste e perda.</Aviso>}
+          {desconto > 0 && !descontoPassou && <p className="texto-suave pequeno">{formatarMoeda(desconto)} · {formatarPercentual(percentual(desconto, subtotal))} do valor{duasEmpresas && ', dividido entre os dois CNPJs'}</p>}
           {!ehProprietaria && <p className="texto-suave pequeno">Seu limite de desconto: {config.limiteDescontoVendedora}%</p>}
           {precisaAprovacao && (
             <Aviso tom="vinho">
@@ -355,7 +375,14 @@ export default function NovaVenda() {
           <Aviso tom="ambar">Esta venda tem peças dos dois CNPJs. Cobre cada parte na maquininha do seu CNPJ.</Aviso>
         )}
         {encomenda?.sinal?.valor > 0 && (
-          <Aviso tom="oliva">A cliente já pagou {formatarMoeda(encomenda.sinal.valor)} de sinal ({FORMAS_PAGAMENTO[encomenda.sinal.forma]}). Ele já está na primeira forma de pagamento: cobre só o restante.</Aviso>
+          <Aviso tom={encomenda.sinal.valor > (partes[0]?.total || 0) ? 'ambar' : 'oliva'}>
+            A cliente já pagou {formatarMoeda(encomenda.sinal.valor)} de sinal ({FORMAS_PAGAMENTO[encomenda.sinal.forma]}).{' '}
+            {encomenda.sinal.valor < (partes[0]?.total || 0)
+              ? 'Ele já está na primeira forma de pagamento: cobre só o restante.'
+              : encomenda.sinal.valor === partes[0]?.total
+                ? 'O sinal paga esta parte inteira: não há nada a cobrar nela.'
+                : `O sinal passou do valor desta parte: devolva ${formatarMoeda(arred(encomenda.sinal.valor - (partes[0]?.total || 0)))} à cliente.`}
+          </Aviso>
         )}
         {partes.map((p) => (
           <BlocoPagamento
@@ -380,7 +407,7 @@ export default function NovaVenda() {
             <small>{desconto > 0 ? `${formatarMoeda(subtotal)} − ${formatarMoeda(desconto)}` : textoPecas}</small>
             <strong>{formatarMoeda(total)}</strong>
           </div>
-          <button className="botao botao-principal botao-grande" disabled={precisaAprovacao || !pagamentoFecha} onClick={concluir}>
+          <button className="botao botao-principal botao-grande" disabled={precisaAprovacao || !pagamentoFecha || vendaZerada || descontoPassou} onClick={concluir}>
             <Icone nome="confirmar" /> Concluir venda
           </button>
         </footer>
@@ -450,7 +477,7 @@ export default function NovaVenda() {
               <div className="quantidade">
                 <button className="botao-icone" onClick={() => mudarQuantidade(i.variacao_id, -1)} aria-label="Diminuir"><Icone nome={i.quantidade === 1 ? 'lixo' : 'subtrair'} tamanho={18} /></button>
                 <span>{i.quantidade}</span>
-                <button className="botao-icone" onClick={() => mudarQuantidade(i.variacao_id, 1)} aria-label="Aumentar"><Icone nome="somar" tamanho={18} /></button>
+                <button className="botao-icone" onClick={() => mudarQuantidade(i.variacao_id, 1)} disabled={i.quantidade >= LIMITE.quantidadeItem} aria-label="Aumentar"><Icone nome="somar" tamanho={18} /></button>
               </div>
               <strong className="item-total">{formatarMoeda(arred(i.linha.preco * i.quantidade))}</strong>
             </div>

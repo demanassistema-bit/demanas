@@ -3,6 +3,7 @@ import { useDemo } from '../../demo/DemoContext'
 import { arred, formatarMoeda, lerMoeda, FORMAS_PAGAMENTO } from '../../lib/moeda'
 import { diaDe, formatarData, formatarHora, hojeISO } from '../../lib/datas'
 import { saldoEsperadoCaixa } from '../../demo/regras'
+import { filtroDinheiro, lerValor, limparTexto, TAMANHO } from '../../lib/limites'
 import Icone from '../../components/Icone'
 import { Aviso, Selo } from '../../components/ui'
 
@@ -40,21 +41,32 @@ export default function Caixa() {
   const contadoNum = lerMoeda(contado)
   const diferenca = contadoNum == null || Number.isNaN(contadoNum) ? null : arred(contadoNum - esperado)
 
+  function abrir(e) {
+    e.preventDefault()
+    const lido = lerValor(abertura, { rotulo: 'o troco da abertura', min: 0, obrigatorio: false })
+    if (lido.erro) return setErro(lido.erro)
+    setErro('')
+    abrirCaixa(hoje, lido.valor)
+  }
+
   function salvarLancamento(e) {
     e.preventDefault()
-    const valor = lerMoeda(lancamento.valor)
-    if (!valor || valor <= 0) return setErro('Informe o valor.')
-    if (!lancamento.motivo.trim()) return setErro('Informe o motivo: fica registrado.')
+    const lido = lerValor(lancamento.valor)
+    if (lido.erro) return setErro(lido.erro)
+    const valor = lido.valor
+    const motivo = limparTexto(lancamento.motivo)
+    if (motivo.length < 3) return setErro('Informe o motivo: fica registrado.')
     if (lancamento.tipo === 'sangria' && valor > esperado) return setErro(`A gaveta deveria ter só ${formatarMoeda(esperado)}.`)
-    lancarNoCaixa(hoje, { tipo: lancamento.tipo, valor, motivo: lancamento.motivo.trim() })
+    lancarNoCaixa(hoje, { tipo: lancamento.tipo, valor, motivo })
     setLancamento(null); setErro('')
   }
 
   function fechar(e) {
     e.preventDefault()
-    if (diferenca == null) return setErro('Conte o dinheiro da gaveta e informe o valor.')
-    if (diferenca !== 0 && !observacao.trim()) return setErro('Houve diferença: explique o motivo antes de fechar.')
-    fecharCaixa(hoje, { contado: contadoNum, observacao: observacao.trim() })
+    const lido = lerValor(contado, { rotulo: 'quanto tem na gaveta', min: 0 })
+    if (lido.erro) return setErro(contado.trim() ? lido.erro : 'Conte o dinheiro da gaveta e informe o valor.')
+    if (diferenca !== 0 && limparTexto(observacao).length < 3) return setErro('Houve diferença: explique o motivo antes de fechar.')
+    fecharCaixa(hoje, { contado: lido.valor, observacao: limparTexto(observacao) })
     setErro('')
   }
 
@@ -82,9 +94,10 @@ export default function Caixa() {
       </section>
 
       {!caixa && (
-        <form className="cartao secao" onSubmit={(e) => { e.preventDefault(); abrirCaixa(hoje, lerMoeda(abertura) || 0) }}>
+        <form className="cartao secao" onSubmit={abrir}>
           <h2>Abrir o caixa</h2>
-          <label className="campo campo-estreito"><span>Dinheiro na gaveta para troco</span><input inputMode="decimal" value={abertura} onChange={(e) => setAbertura(e.target.value)} /></label>
+          <label className="campo campo-estreito"><span>Dinheiro na gaveta para troco</span><input inputMode="decimal" value={abertura} onChange={(e) => setAbertura(filtroDinheiro(e.target.value))} /></label>
+          {erro && <Aviso tom="vinho">{erro}</Aviso>}
           <button className="botao botao-principal botao-grande">Abrir caixa de hoje</button>
         </form>
       )}
@@ -125,8 +138,8 @@ export default function Caixa() {
             <form className="formulario secao-interna cartao secao" onSubmit={salvarLancamento}>
               <h3>{lancamento.tipo === 'sangria' ? 'Sangria: tirar dinheiro da gaveta' : 'Suprimento: colocar dinheiro na gaveta'}</h3>
               <div className="grade-campos">
-                <label className="campo"><span>Valor</span><input inputMode="decimal" value={lancamento.valor} onChange={(e) => setLancamento({ ...lancamento, valor: e.target.value })} autoFocus /></label>
-                <label className="campo"><span>Motivo</span><input value={lancamento.motivo} onChange={(e) => setLancamento({ ...lancamento, motivo: e.target.value })} placeholder={lancamento.tipo === 'sangria' ? 'Ex.: depósito no banco' : 'Ex.: mais troco'} /></label>
+                <label className="campo"><span>Valor</span><input inputMode="decimal" value={lancamento.valor} onChange={(e) => setLancamento({ ...lancamento, valor: filtroDinheiro(e.target.value) })} autoFocus /></label>
+                <label className="campo"><span>Motivo</span><input value={lancamento.motivo} onChange={(e) => setLancamento({ ...lancamento, motivo: e.target.value })} maxLength={TAMANHO.motivo} placeholder={lancamento.tipo === 'sangria' ? 'Ex.: depósito no banco' : 'Ex.: mais troco'} /></label>
               </div>
               <div className="linha-campos">
                 <button type="button" className="botao botao-fantasma" onClick={() => { setLancamento(null); setErro('') }}>Cancelar</button>
@@ -138,12 +151,12 @@ export default function Caixa() {
           {!caixa.fechadoEm && (
             <form className="formulario" onSubmit={fechar}>
               <h3>Fechar o caixa</h3>
-              <label className="campo campo-estreito"><span>Quanto tem na gaveta agora?</span><input inputMode="decimal" value={contado} onChange={(e) => setContado(e.target.value)} placeholder="Conte as notas e moedas" /></label>
+              <label className="campo campo-estreito"><span>Quanto tem na gaveta agora?</span><input inputMode="decimal" value={contado} onChange={(e) => setContado(filtroDinheiro(e.target.value))} placeholder="Conte as notas e moedas" /></label>
               {diferenca != null && (diferenca === 0
                 ? <Aviso tom="oliva">Confere certinho com o sistema.</Aviso>
                 : <Aviso tom={diferenca < 0 ? 'vinho' : 'ambar'}>{diferenca < 0 ? 'Está faltando' : 'Está sobrando'} {formatarMoeda(Math.abs(diferenca))}. Explique abaixo.</Aviso>)}
               {diferenca != null && diferenca !== 0 && (
-                <label className="campo"><span>O que aconteceu?</span><input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex.: troco errado" /></label>
+                <label className="campo"><span>O que aconteceu?</span><input value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={TAMANHO.observacao} placeholder="Ex.: troco errado" /></label>
               )}
               <button className="botao botao-principal botao-grande">Fechar caixa</button>
             </form>

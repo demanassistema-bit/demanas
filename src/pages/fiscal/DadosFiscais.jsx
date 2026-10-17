@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useDemo } from '../../demo/DemoContext'
 import { hojeISO } from '../../lib/datas'
+import { cnpjValido, erroData, filtroInteiro, formatarCNPJ, limparCNPJ, TAMANHO, UFS } from '../../lib/limites'
 import { CAMPOS_PERFIL_FISCAL, emiteNota, empresaEmissora, faltasPerfilFiscal, situacaoCertificado } from '../../demo/regras'
 import { Aviso, Selo } from '../../components/ui'
 
@@ -20,6 +22,9 @@ export default function DadosFiscais() {
   const campoEmpresa = (chave, nome, props = {}) => (
     <label className="campo"><span>{nome}</span><input value={fiscal.empresa[chave]} onChange={(e) => empresa(chave, e.target.value)} {...props} /></label>
   )
+  // a validade só é guardada quando a data está completa e faz sentido
+  const [validadeTexto, setValidadeTexto] = useState(fiscal.certificadoValidade || '')
+  const erroValidade = erroData(validadeTexto, { rotulo: 'a validade', min: '2020-01-01', max: '2040-12-31', obrigatoria: false })
 
   return (
     <div className="calculadora">
@@ -35,8 +40,14 @@ export default function DadosFiscais() {
               <Selo tom={e.tipo === 'me' ? 'oliva' : 'neutro'}>{e.tipo === 'me' ? 'ME · Simples · emite nota' : 'MEI · só consumidor final · sem nota'}</Selo>
             </header>
             <div className="grade-campos">
-              <label className="campo"><span>Razão social</span><input value={e.razao_social} onChange={(ev) => mudarEmpresa(id, { razao_social: ev.target.value })} /></label>
-              <label className="campo"><span>CNPJ</span><input inputMode="numeric" value={e.cnpj} onChange={(ev) => mudarEmpresa(id, { cnpj: ev.target.value })} /></label>
+              <label className="campo"><span>Razão social</span><input value={e.razao_social} maxLength={TAMANHO.razaoSocial} onChange={(ev) => mudarEmpresa(id, { razao_social: ev.target.value })} /></label>
+              <label className="campo">
+                <span>CNPJ</span>
+                <input value={e.cnpj} maxLength={18} placeholder="00.000.000/0000-00"
+                  onChange={(ev) => mudarEmpresa(id, { cnpj: limparCNPJ(ev.target.value) })}
+                  onBlur={() => mudarEmpresa(id, { cnpj: formatarCNPJ(e.cnpj) })} />
+                {limparCNPJ(e.cnpj) && !cnpjValido(e.cnpj) && <small className="texto-alerta">CNPJ incompleto ou com número errado. Confira no cartão CNPJ.</small>}
+              </label>
             </div>
           </div>
         ))}
@@ -45,15 +56,20 @@ export default function DadosFiscais() {
       <section className="cartao secao">
         <h2>Dados para a nota · {emissora?.apelido}</h2>
         <div className="grade-campos">
-          {campoEmpresa('inscricao_estadual', 'Inscrição estadual')}
+          {campoEmpresa('inscricao_estadual', 'Inscrição estadual', { maxLength: 20, onChange: (e) => empresa('inscricao_estadual', e.target.value.toUpperCase().replace(/[^0-9A-Z./-]/g, '')) })}
           <label className="campo"><span>Regime tributário</span>
             <select value={fiscal.empresa.regime} onChange={(e) => empresa('regime', e.target.value)}>
               {Object.entries(REGIMES).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
             </select>
           </label>
-          {campoEmpresa('endereco', 'Endereço')}
-          {campoEmpresa('municipio', 'Município')}
-          {campoEmpresa('uf', 'Estado (UF)', { maxLength: 2 })}
+          {campoEmpresa('endereco', 'Endereço', { maxLength: TAMANHO.endereco })}
+          {campoEmpresa('municipio', 'Município', { maxLength: TAMANHO.municipio })}
+          <label className="campo"><span>Estado (UF)</span>
+            <select value={fiscal.empresa.uf} onChange={(e) => empresa('uf', e.target.value)}>
+              <option value="">Escolha</option>
+              {UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+            </select>
+          </label>
         </div>
         {(fiscal.empresa.regime === 'simples' || fiscal.empresa.regime === 'mei') && (
           <p className="texto-suave pequeno">Reforma tributária: pelas fontes do briefing, Simples e MEI passam a informar IBS e CBS na nota a partir de 4 de janeiro de 2027. Confirmar com a contadora.</p>
@@ -70,7 +86,9 @@ export default function DadosFiscais() {
             </select>
           </label>
           <label className="campo"><span>Validade do certificado A1 do {emissora?.apelido}</span>
-            <input type="date" value={fiscal.certificadoValidade} onChange={(e) => salvar({ certificadoValidade: e.target.value })} />
+            <input type="date" min="2020-01-01" max="2040-12-31" value={validadeTexto}
+              onChange={(e) => { setValidadeTexto(e.target.value); if (!erroData(e.target.value, { min: '2020-01-01', max: '2040-12-31', obrigatoria: false })) salvar({ certificadoValidade: e.target.value }) }} />
+            {erroValidade && <small className="texto-alerta">{erroValidade}</small>}
           </label>
         </div>
         <p className="pequeno">{certificado.tom ? <Selo tom={certificado.tom}>{certificado.texto}</Selo> : <Selo tom="oliva">{certificado.texto}</Selo>}</p>
@@ -100,7 +118,7 @@ export default function DadosFiscais() {
                 {Object.entries(CAMPOS_PERFIL_FISCAL).map(([chave, campo]) => (
                   <label key={chave} className="campo">
                     <span>{campo.nome} <small className="texto-suave">({campo.ajuda})</small></span>
-                    <input inputMode="numeric" value={p[chave] || ''} onChange={(e) => perfil(cat, { [chave]: e.target.value, validado: false })} />
+                    <input inputMode="numeric" maxLength={campo.digitos} value={p[chave] || ''} onChange={(e) => perfil(cat, { [chave]: filtroInteiro(e.target.value, campo.digitos), validado: false })} />
                   </label>
                 ))}
               </div>

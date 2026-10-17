@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useDemo } from '../demo/DemoContext'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda } from '../lib/moeda'
 import { diasDesde } from '../lib/datas'
+import { filtroDinheiro, filtroPercentual, LIMITE, TAMANHO } from '../lib/limites'
 import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem, taxasDe } from '../demo/regras'
 import Icone from '../components/Icone'
 import { Aviso, SeletorVariacao } from '../components/ui'
@@ -49,8 +50,11 @@ export default function Calculadora() {
   }))
   const mudar = (chave, texto, guardar) => {
     setTextos((t) => ({ ...t, [chave]: texto }))
-    if (guardar) guardar(numero(texto))
+    if (guardar) guardar(Math.min(numero(texto), LIMITE.valor))
   }
+  // dinheiro e percentual: só números e vírgula; percentual nunca passa de 100
+  const mudarValor = (chave, texto, guardar) => mudar(chave, filtroDinheiro(texto), guardar)
+  const mudarPercentual = (chave, texto, guardar) => mudar(chave, filtroPercentual(texto), guardar)
   const guardarCalc = (chave) => (n) => atualizarConfig({ calculadora: { ...calc, [chave]: n } })
   const marcarCalc = (campos) => atualizarConfig({ calculadora: { ...calc, ...campos } })
 
@@ -87,6 +91,7 @@ export default function Calculadora() {
     atualizarConfig({ custosFixos: config.custosFixos.map((c) => (c.id === id ? { ...c, ...campos } : c)) })
   }
   function adicionarFixo() {
+    if (config.custosFixos.length >= LIMITE.custosFixos) return
     const id = `f${Date.now()}`
     atualizarConfig({ custosFixos: [...config.custosFixos, { id, nome: '', valor: 0 }] })
     setTextos((t) => ({ ...t, [`fixo_${id}`]: '' }))
@@ -110,8 +115,8 @@ export default function Calculadora() {
         <h2>1. Custo da peça</h2>
         <SeletorVariacao escolhida={produto} aoEscolher={escolherProduto} />
         <div className="grade-campos">
-          <label className="campo"><span>Preço de custo da peça</span><input inputMode="decimal" value={textos.custo} onChange={(e) => mudar('custo', e.target.value)} /></label>
-          <label className="campo"><span>Embalagem por peça</span><input inputMode="decimal" value={textos.embalagem} onChange={(e) => mudar('embalagem', e.target.value, guardarCalc('embalagem'))} /></label>
+          <label className="campo"><span>Preço de custo da peça</span><input inputMode="decimal" value={textos.custo} onChange={(e) => mudarValor('custo', e.target.value)} /></label>
+          <label className="campo"><span>Embalagem por peça</span><input inputMode="decimal" value={textos.embalagem} onChange={(e) => mudarValor('embalagem', e.target.value, guardarCalc('embalagem'))} /></label>
         </div>
       </section>
 
@@ -122,7 +127,7 @@ export default function Calculadora() {
         </label>
         {calc.comEntrega && (
           <>
-            <label className="campo campo-estreito"><span>Custo da entrega</span><input inputMode="decimal" value={textos.entrega} onChange={(e) => mudar('entrega', e.target.value, guardarCalc('entrega'))} /></label>
+            <label className="campo campo-estreito"><span>Custo da entrega</span><input inputMode="decimal" value={textos.entrega} onChange={(e) => mudarValor('entrega', e.target.value, guardarCalc('entrega'))} /></label>
             <div className="segmentado">
               <button className={calc.entregaQuemPaga === 'loja' ? 'ativo' : ''} onClick={() => marcarCalc({ entregaQuemPaga: 'loja' })}>A loja paga</button>
               <button className={calc.entregaQuemPaga === 'cliente' ? 'ativo' : ''} onClick={() => marcarCalc({ entregaQuemPaga: 'cliente' })}>A cliente paga</button>
@@ -144,18 +149,21 @@ export default function Calculadora() {
         <ul className="lista-fixos">
           {config.custosFixos.map((c) => (
             <li key={c.id}>
-              <input className="campo-solto" value={c.nome} placeholder="Nome do custo" onChange={(e) => mudarFixo(c.id, { nome: e.target.value })} aria-label="Nome do custo" />
-              <input className="campo-solto valor" inputMode="decimal" value={textos[`fixo_${c.id}`] ?? ''} onChange={(e) => mudar(`fixo_${c.id}`, e.target.value, (n) => mudarFixo(c.id, { valor: n }))} aria-label={`Valor de ${c.nome || 'custo'}`} />
+              <input className="campo-solto" value={c.nome} maxLength={TAMANHO.custoFixo} placeholder="Nome do custo" onChange={(e) => mudarFixo(c.id, { nome: e.target.value })} aria-label="Nome do custo" />
+              <input className="campo-solto valor" inputMode="decimal" value={textos[`fixo_${c.id}`] ?? ''} onChange={(e) => mudarValor(`fixo_${c.id}`, e.target.value, (n) => mudarFixo(c.id, { valor: n }))} aria-label={`Valor de ${c.nome || 'custo'}`} />
               <button className="botao-icone" onClick={() => removerFixo(c.id)} aria-label={`Remover ${c.nome || 'custo'}`}><Icone nome="lixo" tamanho={18} /></button>
             </li>
           ))}
         </ul>
-        <button className="botao-link" onClick={adicionarFixo}><Icone nome="somar" tamanho={16} /> Adicionar custo fixo</button>
+        {config.custosFixos.length < LIMITE.custosFixos
+          ? <button className="botao-link" onClick={adicionarFixo}><Icone nome="somar" tamanho={16} /> Adicionar custo fixo</button>
+          : <p className="texto-suave pequeno">Limite de {LIMITE.custosFixos} custos fixos. Junte os pequenos num só (ex.: "Outros").</p>}
         <label className="campo campo-estreito">
           <span>Faturamento médio por mês</span>
-          <input inputMode="decimal" value={textos.faturamento} onChange={(e) => mudar('faturamento', e.target.value, guardarCalc('faturamento'))} />
+          <input inputMode="decimal" value={textos.faturamento} onChange={(e) => mudarValor('faturamento', e.target.value, guardarCalc('faturamento'))} />
         </label>
         <p className="texto-suave pequeno">Média das vendas dos últimos 3 meses: {formatarMoeda(faturamentoMedio)}.</p>
+        {fixos.total > 0 && !(calc.faturamento ?? faturamentoMedio) && <Aviso tom="vinho">Sem o faturamento do mês, os custos fixos não entram no preço. Informe quanto a loja vende por mês.</Aviso>}
         <Aviso tom="oliva">Os custos fixos pesam <strong>{formatarPercentual(fixos.percentual)}</strong> de cada venda. Esse valor entra no preço.</Aviso>
       </section>
 
@@ -170,7 +178,7 @@ export default function Calculadora() {
           {FORMAS.map((f) => (
             <label key={f.chave} className="campo">
               <span>{f.nome} (%)</span>
-              <input inputMode="decimal" value={textos[`taxa_${empresaCalc}_${f.chave}`] ?? campo(taxas[f.chave])} onChange={(e) => mudar(`taxa_${empresaCalc}_${f.chave}`, e.target.value, (n) => salvarTaxa(f.chave, n))} />
+              <input inputMode="decimal" value={textos[`taxa_${empresaCalc}_${f.chave}`] ?? campo(taxas[f.chave])} onChange={(e) => mudarPercentual(`taxa_${empresaCalc}_${f.chave}`, e.target.value, (n) => salvarTaxa(f.chave, n))} />
             </label>
           ))}
         </div>
@@ -180,8 +188,8 @@ export default function Calculadora() {
       <section className="cartao secao">
         <h2>5. Imposto e lucro</h2>
         <div className="grade-campos">
-          <label className="campo"><span>Imposto sobre a venda (%)</span><input inputMode="decimal" value={textos.imposto} onChange={(e) => mudar('imposto', e.target.value, guardarCalc('imposto'))} /></label>
-          <label className="campo"><span>Margem de lucro (%)</span><input inputMode="decimal" value={textos.margem} onChange={(e) => mudar('margem', e.target.value, guardarCalc('margem'))} /></label>
+          <label className="campo"><span>Imposto sobre a venda (%)</span><input inputMode="decimal" value={textos.imposto} onChange={(e) => mudarPercentual('imposto', e.target.value, guardarCalc('imposto'))} /></label>
+          <label className="campo"><span>Margem de lucro (%)</span><input inputMode="decimal" value={textos.margem} onChange={(e) => mudarPercentual('margem', e.target.value, guardarCalc('margem'))} /></label>
         </div>
         <p className="texto-suave pequeno">O imposto depende do regime da loja: quem informa é a contadora. A margem é o que sobra limpo, depois de pagar tudo.</p>
         <div className="campo">
@@ -219,7 +227,7 @@ export default function Calculadora() {
           <h2>Para onde vai cada real</h2>
           <label className="campo campo-estreito">
             <span>Testar outro preço</span>
-            <input inputMode="decimal" value={textos.teste} onChange={(e) => mudar('teste', e.target.value)} placeholder={paraCampoMoeda(sugerido)} />
+            <input inputMode="decimal" value={textos.teste} onChange={(e) => mudarValor('teste', e.target.value)} placeholder={paraCampoMoeda(sugerido)} />
           </label>
           <table className="tabela">
             <tbody>

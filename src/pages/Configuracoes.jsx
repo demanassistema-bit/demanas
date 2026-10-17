@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDemo } from '../demo/DemoContext'
 import { lerMoeda, paraCampoMoeda } from '../lib/moeda'
+import { filtroInteiro, filtroPercentual, limparTexto, TAMANHO } from '../lib/limites'
 import { BotaoPerigo } from '../components/Modal'
 import { Aviso } from '../components/ui'
 
@@ -25,7 +26,8 @@ export default function Configuracoes() {
   const [restaurado, setRestaurado] = useState(false)
 
   const mudarEmpresa = (id, campos) => atualizarConfig({ empresas: { ...c.empresas, [id]: { ...c.empresas[id], ...campos } } })
-  const salvarTaxa = (id, chave, texto) => {
+  const salvarTaxa = (id, chave, digitado) => {
+    const texto = filtroPercentual(digitado)
     setTaxas({ ...taxas, [id]: { ...taxas[id], [chave]: texto } })
     const n = lerMoeda(texto)
     if (n != null && !Number.isNaN(n)) mudarEmpresa(id, { taxas: { ...c.empresas[id].taxas, [chave]: n } })
@@ -44,7 +46,7 @@ export default function Configuracoes() {
             <small className="decisao">decisão em aberto · confirmar com vocês</small>
           </span>
           <span className="campo-sufixo">
-            <input inputMode="numeric" value={c.limiteDescontoVendedora} onChange={(e) => atualizarConfig({ limiteDescontoVendedora: Number(e.target.value.replace(/\D/g, '')) || 0 })} aria-label="Limite de desconto" />
+            <input inputMode="numeric" value={c.limiteDescontoVendedora} onChange={(e) => atualizarConfig({ limiteDescontoVendedora: Math.min(Number(filtroInteiro(e.target.value, 3)) || 0, 100) })} aria-label="Limite de desconto" />
             %
           </span>
         </label>
@@ -67,7 +69,7 @@ export default function Configuracoes() {
           </header>
           <label className="campo campo-estreito">
             <span>Nome que aparece no sistema</span>
-            <input value={e.apelido} onChange={(ev) => mudarEmpresa(id, { apelido: ev.target.value })} />
+            <input value={e.apelido} maxLength={TAMANHO.apelido} onChange={(ev) => mudarEmpresa(id, { apelido: ev.target.value })} onBlur={() => mudarEmpresa(id, { apelido: limparTexto(e.apelido) || `CNPJ ${e.dona}` })} />
           </label>
           <p className="texto-suave pequeno">Taxas da maquininha da {e.dona}, usadas para calcular o lucro de verdade de cada venda.</p>
           <div className="grade-campos">

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Icone from '../components/Icone'
+import { TAMANHO } from '../lib/limites'
 import Calculadora from './Calculadora'
 import Caixa from './financeiro/Caixa'
 import AReceber from './financeiro/AReceber'
@@ -59,7 +60,7 @@ export default function AreaFutura({ area }) {
           <p className="texto-suave">Área protegida. Digite o código de acesso para continuar.</p>
           <label className="campo">
             <span>Código de acesso</span>
-            <input type="password" autoComplete="off" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+            <input type="password" autoComplete="off" maxLength={TAMANHO.codigo} value={codigo} onChange={(e) => setCodigo(e.target.value)} />
           </label>
           <button className="botao botao-principal">Entrar</button>
           <p className="texto-suave pequeno">Na demonstração, qualquer código abre. Na versão real, o código fica protegido no banco e 5 erros bloqueiam por 15 minutos.</p>

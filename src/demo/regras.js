@@ -228,11 +228,11 @@ export function dividirDesconto(partes, desconto) {
 // ---------------- Nota fiscal ----------------
 // O sistema só confere o FORMATO. Os códigos de verdade quem define é a contadora.
 export const CAMPOS_PERFIL_FISCAL = {
-  ncm: { nome: 'NCM', ajuda: '8 números', valido: (v) => /^\d{8}$/.test(v) },
-  cest: { nome: 'CEST', ajuda: '7 números, quando houver', valido: (v) => !v || /^\d{7}$/.test(v), opcional: true },
-  origem: { nome: 'Origem', ajuda: '1 número (0 a 8)', valido: (v) => /^[0-8]$/.test(v) },
-  cfop: { nome: 'CFOP', ajuda: '4 números', valido: (v) => /^\d{4}$/.test(v) },
-  csosn: { nome: 'CSOSN ou CST', ajuda: '2 ou 3 números', valido: (v) => /^\d{2,3}$/.test(v) },
+  ncm: { nome: 'NCM', ajuda: '8 números', digitos: 8, valido: (v) => /^\d{8}$/.test(v) },
+  cest: { nome: 'CEST', ajuda: '7 números, quando houver', digitos: 7, valido: (v) => !v || /^\d{7}$/.test(v), opcional: true },
+  origem: { nome: 'Origem', ajuda: '1 número (0 a 8)', digitos: 1, valido: (v) => /^[0-8]$/.test(v) },
+  cfop: { nome: 'CFOP', ajuda: '4 números', digitos: 4, valido: (v) => /^\d{4}$/.test(v) },
+  csosn: { nome: 'CSOSN ou CST', ajuda: '2 ou 3 números', digitos: 3, valido: (v) => /^\d{2,3}$/.test(v) },
 }
 
 // Lista do que falta (ou está em formato errado) num perfil fiscal
