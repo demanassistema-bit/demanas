@@ -20,10 +20,9 @@ function Interruptor({ ligado, aoMudar, children, decisao, disabled }) {
 }
 
 export default function Configuracoes() {
-  const { dados, atualizarConfig, restaurar } = useDemo()
+  const { restaurar } = useDemo()
   const cat = useCatalogo()
   const { empresas, parametros, categorias } = cat
-  const c = dados.config
   const [erro, setErro] = useState('')
   const [restaurado, setRestaurado] = useState(false)
   const executar = async (promessa) => { const r = await promessa; setErro(r?.erro || '') }
@@ -41,10 +40,7 @@ export default function Configuracoes() {
           Permitir vender peça que o sistema diz estar sem estoque
           <small className="texto-suave">Útil só no começo, enquanto a contagem não estiver completa. O estoque fica negativo até a próxima entrada ou contagem.</small>
         </Interruptor>
-        <Interruptor ligado={c.aceitaCrediario} aoMudar={(v) => atualizarConfig({ aceitaCrediario: v })} decisao disabled>
-          Aceitar crediário (fiado)
-          <small className="texto-suave">Chega com o Financeiro, que controla quem deve e quando paga.</small>
-        </Interruptor>
+        <p className="texto-suave pequeno">A loja não vende fiado (crediário): só Pix, cartão e dinheiro.</p>
       </section>
 
       <section className="cartao secao">
@@ -71,6 +67,13 @@ export default function Configuracoes() {
               <Taxa key={tipo} nome={nome} atual={cat.taxas[e.id]?.[tipo] ?? 0} aoSalvar={(n) => executar(cat.salvarTaxa(e.id, tipo, n))} />
             ))}
           </div>
+          <p className="texto-suave pequeno">Em quantos dias o dinheiro do cartão cai na conta. <span className="decisao">confirmar com a maquininha</span></p>
+          <div className="grade-campos">
+            <NumeroEmpresa nome="Débito cai em (dias)" atual={e.prazo_debito_dias} min={0} max={60} aoSalvar={(n) => executar(cat.atualizarEmpresa(e.id, { prazo_debito_dias: n }))} />
+            <NumeroEmpresa nome="Crédito cai em (dias, por parcela)" atual={e.prazo_credito_dias} min={1} max={60} aoSalvar={(n) => executar(cat.atualizarEmpresa(e.id, { prazo_credito_dias: n }))} />
+            <Taxa nome="Imposto sobre a venda" atual={Number(e.imposto_percentual ?? 0)} aoSalvar={(n) => executar(cat.atualizarEmpresa(e.id, { imposto_percentual: n }))} />
+          </div>
+          <p className="texto-suave pequeno">O imposto entra como custo variável no Resultado do mês e na Calculadora. Mude quando a contadora recomendar. O prazo vale para as próximas vendas.</p>
         </section>
       ))}
 
@@ -84,7 +87,7 @@ export default function Configuracoes() {
 
       <section className="cartao secao">
         <h2>Dados de exemplo</h2>
-        <p className="texto-suave pequeno">Clientes, encomendas e financeiro ainda usam dados de exemplo, guardados só neste aparelho. Este botão volta esses exemplos ao início. Não mexe em produtos, estoque nem vendas, que já são de verdade.</p>
+        <p className="texto-suave pequeno">A nota fiscal e os relatórios ainda usam dados de exemplo, guardados só neste aparelho. Este botão volta esses exemplos ao início. Não mexe em nada do que já é de verdade (produtos, estoque, vendas, clientes, encomendas e financeiro).</p>
         {restaurado ? <Aviso tom="oliva">Dados de exemplo restaurados.</Aviso> : (
           <BotaoPerigo texto="Restaurar dados de exemplo" aoConfirmar={() => { restaurar(); setRestaurado(true) }} />
         )}
@@ -131,6 +134,26 @@ function Taxa({ nome, atual, aoSalvar }) {
     <label className="campo">
       <span>{nome} (%)</span>
       <input inputMode="decimal" value={texto} onChange={(e) => setTexto(filtroPercentual(e.target.value))} onBlur={salvar} />
+      {erro && <small className="texto-alerta">{erro}</small>}
+    </label>
+  )
+}
+
+// Número inteiro salvo ao sair do campo (prazo da maquininha)
+function NumeroEmpresa({ nome, atual, min, max, aoSalvar }) {
+  const [texto, setTexto] = useState(String(atual ?? ''))
+  useEffect(() => { setTexto(String(atual ?? '')) }, [atual])
+  const [erro, setErro] = useState('')
+  function salvar() {
+    const n = Number(texto)
+    if (texto === '' || !Number.isInteger(n) || n < min || n > max) return setErro(`De ${min} a ${max}.`)
+    setErro('')
+    if (n !== atual) aoSalvar(n)
+  }
+  return (
+    <label className="campo">
+      <span>{nome}</span>
+      <input inputMode="numeric" value={texto} onChange={(e) => setTexto(filtroInteiro(e.target.value, 2))} onBlur={salvar} />
       {erro && <small className="texto-alerta">{erro}</small>}
     </label>
   )

@@ -26,7 +26,6 @@ export const FORMAS_PAGAMENTO = {
   cartao_debito: 'Débito',
   cartao_credito: 'Crédito',
   dinheiro: 'Dinheiro',
-  crediario: 'Crediário',
 }
 
 export const CANAIS = {

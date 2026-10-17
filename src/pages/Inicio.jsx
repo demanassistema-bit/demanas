@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Link } from 'react-router-dom'
-import { useDemo } from '../demo/DemoContext'
+import { useAuth } from '../contexts/AuthContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
 import { useClientes } from '../contexts/ClientesContext'
 import { textoLote } from '../lib/estoque'
 import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
-import { deISO, diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte } from '../lib/datas'
+import { deISO, diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte, paraISO, somarDias } from '../lib/datas'
 import Icone from '../components/Icone'
 import { Metrica, Selo, seloValidade, Vazio } from '../components/ui'
 import { aniversarioNoMes, situacaoEncomenda, textoItem } from '../lib/clientes'
@@ -17,7 +17,10 @@ function saudacao() {
 }
 
 export default function Inicio() {
-  const { dados } = useDemo() // contas a pagar: ainda de exemplo até o Financeiro
+  const { permissoes } = useAuth()
+  // contas a pagar só aparecem com o Financeiro aberto (o banco não entrega sem o código)
+  const verContas = Boolean(permissoes.pode_financeiro)
+  const contasLiberadas = verContas && Boolean(permissoes.financeiro_liberado)
   const { ativas, encomendas, clientePorId } = useClientes()
   const catalogo = useCatalogo()
   const podeVerCustos = catalogo.podeVerCustos
@@ -68,7 +71,13 @@ export default function Inicio() {
     .filter((c) => aniversarioNoMes(c.nascimento, mesAtual + 1))
     .sort((a, b) => a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)))
   const ultimas = vendasMes.slice(0, 5)
-  const contasProximas = (dados.contasPagar || []).filter((c) => !c.pagoEm && diasAte(c.vencimento) <= 7)
+  const [contasProximas, setContasProximas] = useState([])
+  useEffect(() => {
+    if (!contasLiberadas) return
+    supabase.from('contas_pagar').select('id, descricao, fornecedor, valor, vencimento').is('pago_em', null)
+      .lte('vencimento', paraISO(somarDias(new Date(), 7))).order('vencimento').limit(50)
+      .then(({ data }) => setContasProximas(data || []))
+  }, [contasLiberadas])
   // encomendas que pedem atenção: chegaram (avisar), atrasadas, chegando em até 7 dias
   const encomendasAtencao = encomendas
     .filter((e) => e.status === 'chegou' || (e.status === 'aguardando' && e.previsao && diasAte(e.previsao) <= 7))
@@ -175,13 +184,13 @@ export default function Inicio() {
           )}
         </section>
 
-        {podeVerCustos && (
+        {verContas && (
           <section className="cartao bloco">
             <header className="bloco-topo">
               <h2>Contas a vencer</h2>
               <Link to="/financeiro" className="botao-link">Financeiro</Link>
             </header>
-            {contasProximas.length === 0 ? <Vazio icone="confirmar" titulo="Nada vencendo em 7 dias" /> : (
+            {!contasLiberadas ? <Vazio icone="cadeado" titulo="Abra o Financeiro para ver">As contas a pagar aparecem aqui depois do código.</Vazio> : contasProximas.length === 0 ? <Vazio icone="confirmar" titulo="Nada vencendo em 7 dias" /> : (
               <ul className="lista">
                 {contasProximas.slice(0, 6).map((c) => {
                   const dias = diasAte(c.vencimento)

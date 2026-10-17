@@ -1,43 +1,55 @@
-import { useState } from 'react'
-import { useDemo } from '../../demo/DemoContext'
-import { arred, formatarMoeda, lerMoeda, FORMAS_PAGAMENTO } from '../../lib/moeda'
-import { diaDe, formatarData, formatarHora, hojeISO } from '../../lib/datas'
-import { saldoEsperadoCaixa } from '../../demo/regras'
+import { useCallback, useEffect, useState } from 'react'
+import { supabase, traduzirErro } from '../../lib/supabase'
+import { arred, formatarMoeda, lerMoeda } from '../../lib/moeda'
+import { formatarData, formatarHora } from '../../lib/datas'
 import { filtroDinheiro, lerValor, limparTexto, TAMANHO } from '../../lib/limites'
+import { NOMES_FORMAS } from '../../lib/vendas'
 import Icone from '../../components/Icone'
 import { Aviso, Selo } from '../../components/ui'
-
-// Vendas concluídas de um dia, somadas por forma de pagamento
-function vendasDoDia(vendas, dia) {
-  const porForma = {}
-  for (const v of vendas) {
-    if (v.status !== 'concluida' || diaDe(v.data) !== dia) continue
-    for (const p of v.pagamentos) porForma[p.forma] = arred((porForma[p.forma] || 0) + p.valor)
-  }
-  return porForma
-}
 
 const seloDiferenca = (dif) => (dif === 0
   ? <Selo tom="oliva">Conferido</Selo>
   : <Selo tom={dif < 0 ? 'vinho' : 'ambar'}>{dif < 0 ? 'Faltou' : 'Sobrou'} {formatarMoeda(Math.abs(dif))}</Selo>)
 
+// Caixa do dia: só o dinheiro em espécie passa pela gaveta. O banco calcula quanto deveria ter.
 export default function Caixa() {
-  const { dados, abrirCaixa, lancarNoCaixa, fecharCaixa } = useDemo()
-  const hoje = hojeISO()
-  const caixa = dados.caixas.find((c) => c.dia === hoje)
-  const porForma = vendasDoDia(dados.vendas, hoje)
-  const dinheiro = porForma.dinheiro || 0
-  const totalHoje = arred(Object.values(porForma).reduce((s, v) => s + v, 0))
-
+  const [resumo, setResumo] = useState(null)
+  const [historico, setHistorico] = useState([])
   const [abertura, setAbertura] = useState('100,00')
   const [lancamento, setLancamento] = useState(null) // { tipo, valor, motivo }
   const [contado, setContado] = useState('')
   const [observacao, setObservacao] = useState('')
   const [erro, setErro] = useState('')
+  const [enviando, setEnviando] = useState(false)
 
-  const suprimentos = caixa ? arred(caixa.lancamentos.filter((l) => l.tipo === 'suprimento').reduce((s, l) => s + l.valor, 0)) : 0
-  const sangrias = caixa ? arred(caixa.lancamentos.filter((l) => l.tipo === 'sangria').reduce((s, l) => s + l.valor, 0)) : 0
-  const esperado = caixa ? saldoEsperadoCaixa({ abertura: caixa.abertura, vendasDinheiro: dinheiro, lancamentos: caixa.lancamentos }) : 0
+  const carregar = useCallback(async () => {
+    const [r, h] = await Promise.all([
+      supabase.rpc('resumo_caixa'),
+      supabase.from('caixas').select('*').not('fechado_em', 'is', null).order('dia', { ascending: false }).limit(11),
+    ])
+    if (r.error) return setErro(traduzirErro(r.error))
+    setResumo(r.data)
+    setHistorico((h.data || []).filter((c) => c.dia !== r.data.dia).slice(0, 10))
+  }, [])
+  useEffect(() => { carregar() }, [carregar])
+
+  // Executa e recarrega; devolve true se deu certo
+  async function executar(promessa) {
+    setErro('')
+    setEnviando(true)
+    const { error } = await promessa
+    setEnviando(false)
+    if (error) { setErro(traduzirErro(error)); return false }
+    await carregar()
+    return true
+  }
+
+  if (!resumo) return <div className="calculadora">{erro ? <Aviso tom="vinho">{erro}</Aviso> : <p className="texto-suave">Carregando…</p>}</div>
+
+  const caixa = resumo.caixa
+  const esperado = Number(resumo.esperado || 0)
+  const porForma = Object.entries(resumo.vendas_por_forma || {})
+  const totalHoje = arred(porForma.reduce((s, [, v]) => s + Number(v), 0))
   const contadoNum = lerMoeda(contado)
   const diferenca = contadoNum == null || Number.isNaN(contadoNum) ? null : arred(contadoNum - esperado)
 
@@ -45,20 +57,17 @@ export default function Caixa() {
     e.preventDefault()
     const lido = lerValor(abertura, { rotulo: 'o troco da abertura', min: 0, obrigatorio: false })
     if (lido.erro) return setErro(lido.erro)
-    setErro('')
-    abrirCaixa(hoje, lido.valor)
+    executar(supabase.rpc('abrir_caixa', { p_abertura: lido.valor }))
   }
 
-  function salvarLancamento(e) {
+  async function salvarLancamento(e) {
     e.preventDefault()
     const lido = lerValor(lancamento.valor)
     if (lido.erro) return setErro(lido.erro)
-    const valor = lido.valor
     const motivo = limparTexto(lancamento.motivo)
     if (motivo.length < 3) return setErro('Informe o motivo: fica registrado.')
-    if (lancamento.tipo === 'sangria' && valor > esperado) return setErro(`A gaveta deveria ter só ${formatarMoeda(esperado)}.`)
-    lancarNoCaixa(hoje, { tipo: lancamento.tipo, valor, motivo })
-    setLancamento(null); setErro('')
+    if (lancamento.tipo === 'sangria' && lido.valor > esperado) return setErro(`A gaveta deveria ter só ${formatarMoeda(esperado)}.`)
+    if (await executar(supabase.rpc('lancar_caixa', { p_tipo: lancamento.tipo, p_valor: lido.valor, p_motivo: motivo }))) setLancamento(null)
   }
 
   function fechar(e) {
@@ -66,18 +75,8 @@ export default function Caixa() {
     const lido = lerValor(contado, { rotulo: 'quanto tem na gaveta', min: 0 })
     if (lido.erro) return setErro(contado.trim() ? lido.erro : 'Conte o dinheiro da gaveta e informe o valor.')
     if (diferenca !== 0 && limparTexto(observacao).length < 3) return setErro('Houve diferença: explique o motivo antes de fechar.')
-    fecharCaixa(hoje, { contado: lido.valor, observacao: limparTexto(observacao) })
-    setErro('')
+    executar(supabase.rpc('fechar_caixa', { p_contado: lido.valor, p_observacao: limparTexto(observacao) }))
   }
-
-  const historico = dados.caixas
-    .filter((c) => c.fechadoEm && c.dia !== hoje)
-    .sort((a, b) => b.dia.localeCompare(a.dia))
-    .slice(0, 10)
-    .map((c) => {
-      const esp = saldoEsperadoCaixa({ abertura: c.abertura, vendasDinheiro: vendasDoDia(dados.vendas, c.dia).dinheiro || 0, lancamentos: c.lancamentos })
-      return { ...c, esperado: esp, diferenca: arred(c.contado - esp) }
-    })
 
   return (
     <div className="calculadora">
@@ -87,18 +86,19 @@ export default function Caixa() {
           <strong>{formatarMoeda(totalHoje)}</strong>
         </header>
         <div className="fichas">
-          {Object.keys(porForma).length === 0 && <span className="texto-suave pequeno">Nenhuma venda ainda hoje.</span>}
-          {Object.entries(porForma).map(([forma, valor]) => <Selo key={forma}>{FORMAS_PAGAMENTO[forma]}: {formatarMoeda(valor)}</Selo>)}
+          {porForma.length === 0 && <span className="texto-suave pequeno">Nenhuma venda ainda hoje.</span>}
+          {porForma.map(([forma, valor]) => <Selo key={forma}>{NOMES_FORMAS[forma] || forma}: {formatarMoeda(valor)}</Selo>)}
         </div>
-        <p className="texto-suave pequeno">Só o dinheiro em espécie passa pela gaveta. Pix e cartão aparecem em "A receber".</p>
+        <p className="texto-suave pequeno">Só o dinheiro em espécie passa pela gaveta. Cartão aparece em "A receber"; Pix cai direto na conta.</p>
       </section>
 
       {!caixa && (
         <form className="cartao secao" onSubmit={abrir}>
           <h2>Abrir o caixa</h2>
+          {Number(resumo.dinheiro) > 0 && <Aviso tom="ambar">Já houve venda em dinheiro hoje ({formatarMoeda(resumo.dinheiro)}). Ela entra na conta da gaveta quando o caixa for aberto.</Aviso>}
           <label className="campo campo-estreito"><span>Dinheiro na gaveta para troco</span><input inputMode="decimal" value={abertura} onChange={(e) => setAbertura(filtroDinheiro(e.target.value))} /></label>
           {erro && <Aviso tom="vinho">{erro}</Aviso>}
-          <button className="botao botao-principal botao-grande">Abrir caixa de hoje</button>
+          <button className="botao botao-principal botao-grande" disabled={enviando}>Abrir caixa de hoje</button>
         </form>
       )}
 
@@ -106,32 +106,34 @@ export default function Caixa() {
         <section className="cartao secao">
           <header className="bloco-topo">
             <h2>Caixa de hoje</h2>
-            {caixa.fechadoEm ? seloDiferenca(arred(caixa.contado - esperado)) : <Selo tom="oliva">Aberto</Selo>}
+            {caixa.fechado_em ? seloDiferenca(arred(caixa.contado - caixa.esperado)) : <Selo tom="oliva">Aberto</Selo>}
           </header>
           <dl className="totais">
             <div><dt>Abertura (troco)</dt><dd>{formatarMoeda(caixa.abertura)}</dd></div>
-            <div><dt>+ Vendas em dinheiro</dt><dd>{formatarMoeda(dinheiro)}</dd></div>
-            {suprimentos > 0 && <div><dt>+ Suprimentos</dt><dd>{formatarMoeda(suprimentos)}</dd></div>}
-            {sangrias > 0 && <div><dt>− Sangrias</dt><dd>{formatarMoeda(sangrias)}</dd></div>}
-            <div className="total"><dt>Deveria ter na gaveta</dt><dd>{formatarMoeda(esperado)}</dd></div>
-            {caixa.fechadoEm && <div><dt>Contado no fechamento</dt><dd>{formatarMoeda(caixa.contado)}</dd></div>}
+            <div><dt>+ Vendas em dinheiro</dt><dd>{formatarMoeda(resumo.dinheiro)}</dd></div>
+            {Number(resumo.sinais) > 0 && <div><dt>+ Sinais de encomenda</dt><dd>{formatarMoeda(resumo.sinais)}</dd></div>}
+            {Number(resumo.devolucoes) > 0 && <div><dt>− Devoluções em dinheiro</dt><dd>{formatarMoeda(resumo.devolucoes)}</dd></div>}
+            {Number(resumo.suprimentos) > 0 && <div><dt>+ Suprimentos</dt><dd>{formatarMoeda(resumo.suprimentos)}</dd></div>}
+            {Number(resumo.sangrias) > 0 && <div><dt>− Sangrias</dt><dd>{formatarMoeda(resumo.sangrias)}</dd></div>}
+            <div className="total"><dt>Deveria ter na gaveta</dt><dd>{formatarMoeda(caixa.fechado_em ? caixa.esperado : esperado)}</dd></div>
+            {caixa.fechado_em && <div><dt>Contado no fechamento</dt><dd>{formatarMoeda(caixa.contado)}</dd></div>}
           </dl>
 
-          {caixa.lancamentos.length > 0 && (
+          {resumo.lancamentos.length > 0 && (
             <ul className="lista lista-compacta">
-              {caixa.lancamentos.map((l) => (
+              {resumo.lancamentos.map((l) => (
                 <li key={l.id} className="linha-lista">
-                  <span><strong>{l.tipo === 'sangria' ? 'Sangria' : 'Suprimento'}</strong><small>{formatarHora(l.hora)} · {l.motivo}</small></span>
+                  <span><strong>{l.tipo === 'sangria' ? 'Sangria' : 'Suprimento'}</strong><small>{formatarHora(l.criado_em)} · {l.motivo}{l.usuario_nome && ` · ${l.usuario_nome}`}</small></span>
                   <strong className={l.tipo === 'sangria' ? 'texto-negativo' : 'texto-positivo'}>{l.tipo === 'sangria' ? '−' : '+'} {formatarMoeda(l.valor)}</strong>
                 </li>
               ))}
             </ul>
           )}
 
-          {!caixa.fechadoEm && !lancamento && (
+          {!caixa.fechado_em && !lancamento && (
             <div className="linha-campos">
-              <button className="botao botao-secundario" onClick={() => setLancamento({ tipo: 'suprimento', valor: '', motivo: '' })}><Icone nome="somar" tamanho={18} /> Suprimento</button>
-              <button className="botao botao-secundario" onClick={() => setLancamento({ tipo: 'sangria', valor: '', motivo: '' })}><Icone nome="subtrair" tamanho={18} /> Sangria</button>
+              <button className="botao botao-secundario" onClick={() => { setErro(''); setLancamento({ tipo: 'suprimento', valor: '', motivo: '' }) }}><Icone nome="somar" tamanho={18} /> Suprimento</button>
+              <button className="botao botao-secundario" onClick={() => { setErro(''); setLancamento({ tipo: 'sangria', valor: '', motivo: '' }) }}><Icone nome="subtrair" tamanho={18} /> Sangria</button>
             </div>
           )}
           {lancamento && (
@@ -143,12 +145,12 @@ export default function Caixa() {
               </div>
               <div className="linha-campos">
                 <button type="button" className="botao botao-fantasma" onClick={() => { setLancamento(null); setErro('') }}>Cancelar</button>
-                <button className="botao botao-principal">Registrar</button>
+                <button className="botao botao-principal" disabled={enviando}>Registrar</button>
               </div>
             </form>
           )}
 
-          {!caixa.fechadoEm && (
+          {!caixa.fechado_em && (
             <form className="formulario" onSubmit={fechar}>
               <h3>Fechar o caixa</h3>
               <label className="campo campo-estreito"><span>Quanto tem na gaveta agora?</span><input inputMode="decimal" value={contado} onChange={(e) => setContado(filtroDinheiro(e.target.value))} placeholder="Conte as notas e moedas" /></label>
@@ -158,11 +160,11 @@ export default function Caixa() {
               {diferenca != null && diferenca !== 0 && (
                 <label className="campo"><span>O que aconteceu?</span><input value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={TAMANHO.observacao} placeholder="Ex.: troco errado" /></label>
               )}
-              <button className="botao botao-principal botao-grande">Fechar caixa</button>
+              <button className="botao botao-principal botao-grande" disabled={enviando}>Fechar caixa</button>
             </form>
           )}
-          {caixa.fechadoEm && (
-            <p className="texto-suave pequeno">Fechado às {formatarHora(caixa.fechadoEm)}{caixa.observacao && ` · ${caixa.observacao}`}. Amanhã é só abrir de novo.</p>
+          {caixa.fechado_em && (
+            <p className="texto-suave pequeno">Fechado às {formatarHora(caixa.fechado_em)}{caixa.observacao && ` · ${caixa.observacao}`}. Amanhã é só abrir de novo.</p>
           )}
           {erro && <Aviso tom="vinho">{erro}</Aviso>}
         </section>
@@ -170,14 +172,16 @@ export default function Caixa() {
 
       <section className="cartao secao">
         <h2>Últimos fechamentos</h2>
-        <ul className="lista">
-          {historico.map((c) => (
-            <li key={c.id} className="linha-lista">
-              <span><strong>{formatarData(c.dia)}</strong><small>esperado {formatarMoeda(c.esperado)} · contado {formatarMoeda(c.contado)}{c.observacao && ` · ${c.observacao}`}</small></span>
-              {seloDiferenca(c.diferenca)}
-            </li>
-          ))}
-        </ul>
+        {historico.length === 0 ? <p className="texto-suave pequeno">Os fechamentos aparecem aqui.</p> : (
+          <ul className="lista">
+            {historico.map((c) => (
+              <li key={c.id} className="linha-lista">
+                <span><strong>{formatarData(c.dia)}</strong><small>esperado {formatarMoeda(c.esperado)} · contado {formatarMoeda(c.contado)}{c.observacao && ` · ${c.observacao}`}</small></span>
+                {seloDiferenca(arred(c.contado - c.esperado))}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   )
