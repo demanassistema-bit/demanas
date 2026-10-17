@@ -75,6 +75,10 @@ export default function Equipe() {
                   </label>
                 </div>
                 <label className="interruptor-linha">
+                  <span>Pode ver custo e margem dos produtos</span>
+                  <input type="checkbox" role="switch" className="interruptor" checked={m.pode_ver_custos || m.papel === 'admin'} disabled={m.papel === 'admin'} onChange={(e) => alterar(m, { pode_ver_custos: e.target.checked })} />
+                </label>
+                <label className="interruptor-linha">
                   <span>Pode entrar no Financeiro</span>
                   <input type="checkbox" role="switch" className="interruptor" checked={m.pode_financeiro} onChange={(e) => alterar(m, { pode_financeiro: e.target.checked })} />
                 </label>

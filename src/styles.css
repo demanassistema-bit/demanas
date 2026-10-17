@@ -550,3 +550,9 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .membro.inativo { opacity: 0.6; }
 .membro-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 .membro-topo small { display: block; color: var(--texto-suave); overflow-wrap: anywhere; }
+
+/* ---------- Catálogo ---------- */
+.acoes-topo { display: flex; flex-wrap: wrap; gap: 8px; }
+.botao-arquivo { cursor: pointer; align-self: flex-start; }
+.linha-botao { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.variacao.inativo { opacity: 0.55; }

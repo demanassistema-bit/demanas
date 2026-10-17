@@ -5,6 +5,8 @@ import Logo from './components/Logo'
 import Login from './pages/Login'
 import DefinirSenha from './pages/DefinirSenha'
 import Equipe from './pages/Equipe'
+import ImportarProdutos from './pages/ImportarProdutos'
+import Fornecedores from './pages/Fornecedores'
 import Inicio from './pages/Inicio'
 import NovaVenda from './pages/NovaVenda'
 import Vendas from './pages/Vendas'
@@ -49,7 +51,9 @@ export default function App() {
           <Route path="vendas" element={<Vendas />} />
           <Route path="encomendas" element={<Encomendas />} />
           <Route path="produtos" element={<Produtos />} />
+          <Route path="produtos/importar" element={<ImportarProdutos />} />
           <Route path="produtos/:produtoId" element={<FichaProduto />} />
+          <Route path="fornecedores" element={soSe(permissoes.admin, <Fornecedores />)} />
           <Route path="estoque" element={<Estoque />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="clientes/:clienteId" element={<FichaCliente />} />

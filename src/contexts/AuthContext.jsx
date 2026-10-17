@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { supabase, linkDeAcesso } from '../lib/supabase'
 
 // Quem entrou, o perfil dela e o que ela pode ver. A proteção de verdade fica no banco (RLS).
-const AuthContext = createContext(null)
+export const AuthContext = createContext(null)
 
 const semPermissoes = {
   admin: false,

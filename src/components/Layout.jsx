@@ -11,6 +11,7 @@ const ITENS = [
   { para: '/vendas', nome: 'Vendas', icone: 'vendas' },
   { para: '/encomendas', nome: 'Encomendas', icone: 'encomenda' },
   { para: '/produtos', nome: 'Produtos', icone: 'produtos' },
+  { para: '/fornecedores', nome: 'Fornecedores', icone: 'encomenda', so: 'admin' },
   { para: '/estoque', nome: 'Estoque', icone: 'estoque' },
   { para: '/clientes', nome: 'Clientes', icone: 'clientes' },
   { para: '/relatorios', nome: 'Relatórios', icone: 'relatorios' },
@@ -62,7 +63,7 @@ export default function Layout() {
   return (
     <div className="app">
       <div className="faixa-demo" role="note">
-        <span><strong>Em montagem</strong> · o login e a equipe já são de verdade. Produtos, estoque, vendas e clientes ainda são dados de exemplo, guardados só neste aparelho.</span>
+        <span><strong>Em montagem</strong> · o login, a equipe e os produtos já são de verdade. Produtos e fornecedores também. Estoque, vendas e clientes ainda são dados de exemplo, guardados só neste aparelho.</span>
       </div>
 
       <aside className="lateral">

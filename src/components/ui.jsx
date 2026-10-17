@@ -70,8 +70,10 @@ export function buscarVariacoes(linhas, texto, limite = 8) {
 }
 
 // Escolher uma variação digitando parte do nome, código ou cor
-export function SeletorVariacao({ escolhida, aoEscolher }) {
-  const { linhas } = useDemo()
+// opcoes: lista de peças para escolher (sem ela, usa as peças da demonstração)
+export function SeletorVariacao({ escolhida, aoEscolher, opcoes }) {
+  const { linhas: daDemo } = useDemo()
+  const linhas = opcoes || daDemo
   const [texto, setTexto] = useState('')
   const resultados = useMemo(() => buscarVariacoes(linhas, texto), [linhas, texto])
 
@@ -80,7 +82,7 @@ export function SeletorVariacao({ escolhida, aoEscolher }) {
       <div className="seletor-escolhido">
         <div>
           <strong>{escolhida.produto.nome}</strong>
-          <small>{escolhida.nomeVariacao} · em estoque: {escolhida.saldo}</small>
+          <small>{escolhida.nomeVariacao}{escolhida.saldo != null && ` · em estoque: ${escolhida.saldo}`}</small>
         </div>
         <button type="button" className="botao-link" onClick={() => aoEscolher(null)}>Trocar</button>
       </div>
@@ -98,7 +100,7 @@ export function SeletorVariacao({ escolhida, aoEscolher }) {
                   <strong>{l.produto.nome}</strong>
                   <small>{l.nomeVariacao}</small>
                 </span>
-                <span className="texto-suave">{l.saldo} un · {formatarMoeda(l.preco)}</span>
+                <span className="texto-suave">{l.saldo != null && `${l.saldo} un · `}{formatarMoeda(l.preco)}</span>
               </button>
             </li>
           ))}

@@ -4,6 +4,7 @@ import { configurado } from './lib/supabase'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { DemoProvider } from './demo/DemoContext'
+import { CatalogoProvider } from './contexts/CatalogoContext'
 import App from './App'
 import './styles.css'
 
@@ -24,9 +25,11 @@ if (!configurado) {
     <React.StrictMode>
       <AuthProvider>
         <ThemeProvider>
-          <DemoProvider>
-            <App />
-          </DemoProvider>
+          <CatalogoProvider>
+            <DemoProvider>
+              <App />
+            </DemoProvider>
+          </CatalogoProvider>
         </ThemeProvider>
       </AuthProvider>
     </React.StrictMode>
