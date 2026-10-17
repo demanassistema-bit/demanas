@@ -63,7 +63,7 @@ export default function Layout() {
   return (
     <div className="app">
       <div className="faixa-demo" role="note">
-        <span><strong>Em montagem</strong> · login, equipe, produtos, estoque e vendas já são de verdade. A tela Clientes, as encomendas, o financeiro e a nota fiscal ainda são de exemplo, guardados só neste aparelho.</span>
+        <span><strong>Em montagem</strong> · login, equipe, produtos, estoque, vendas, clientes e encomendas já são de verdade. O financeiro, a nota fiscal e os relatórios ainda são de exemplo, guardados só neste aparelho.</span>
       </div>
 
       <aside className="lateral">

@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
+import { useClientes } from '../contexts/ClientesContext'
 import { supabase, traduzirErro } from '../lib/supabase'
 import { arred, formatarMoeda, formatarPercentual, lerMoeda, paraCampoMoeda, CANAIS } from '../lib/moeda'
 import { filtroDinheiro, filtroPercentual, filtroTelefone, formatarWhatsApp, LIMITE, limparTexto, linkWhatsApp, numeroWhatsApp, TAMANHO, whatsappValido } from '../lib/limites'
 import { falta, FORMAS, MAX_PARCELAS, partesDaVenda, passaDoLimite, taxaEstimada, textoRecibo } from '../lib/vendas'
+import { emAberto, sinalPorParte } from '../lib/clientes'
 import { percentual } from '../demo/regras'
 import Icone from '../components/Icone'
 import LeitorCamera, { temLeitorCamera } from '../components/LeitorCamera'
@@ -89,8 +91,10 @@ export default function NovaVenda() {
   const admin = permissoes.admin
   const permitirNegativo = parametros.permitir_estoque_negativo === true
   const limite = Number(parametros.limite_desconto_vendedora ?? 0)
-  const [params] = useSearchParams()
-  const veioDeEncomenda = params.has('encomenda')
+  const [params, setParams] = useSearchParams()
+  const clientesCtx = useClientes()
+  const encomendaId = params.get('encomenda')
+  const encomenda = clientesCtx.encomendas.find((e) => e.id === encomendaId && emAberto(e)) || null
 
   const [estado, setEstado] = useState(vazio)
   const { carrinho, etapa } = estado
@@ -113,6 +117,20 @@ export default function NovaVenda() {
   const [resultado, setResultado] = useState(null)
 
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
+
+  // Entrega de encomenda: a venda já abre com as peças do catálogo e a cliente
+  const [preenchida, setPreenchida] = useState(null)
+  useEffect(() => {
+    if (!encomenda || preenchida === encomenda.id || !linhas.length) return
+    const c = clientesCtx.clientePorId.get(encomenda.cliente_id)
+    setEstado({
+      etapa: 'itens',
+      inicio: Date.now(),
+      carrinho: encomenda.itens.filter((i) => i.variacao_id && linhaPorId.get(i.variacao_id)?.ativo).map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })),
+    })
+    if (c) setCliente({ id: c.id, nome: c.nome, whatsapp: c.whatsapp })
+    setPreenchida(encomenda.id)
+  }, [encomenda, preenchida, linhas.length, linhaPorId, clientesCtx.clientePorId])
   const vendaveis = useMemo(() => linhas.filter((l) => l.ativo), [linhas])
   const resultados = useMemo(() => buscarVariacoes(vendaveis, busca), [vendaveis, busca])
 
@@ -137,7 +155,7 @@ export default function NovaVenda() {
     const t = setTimeout(async () => {
       const digitos = texto.replace(/\D/g, '')
       const filtro = digitos.length >= 4 ? `nome.ilike.%${texto}%,whatsapp.ilike.%${digitos}%` : `nome.ilike.%${texto}%`
-      const { data } = await supabase.from('clientes').select('id, nome, whatsapp').or(filtro).order('nome').limit(6)
+      const { data } = await supabase.from('clientes').select('id, nome, whatsapp').is('removida_em', null).or(filtro).order('nome').limit(6)
       setClientesEncontrados(data || [])
     }, 250)
     return () => clearTimeout(t)
@@ -158,7 +176,10 @@ export default function NovaVenda() {
     descontoInvalido ? 0 : desconto,
   ), [itens, desconto, descontoInvalido]) // eslint-disable-line react-hooks/exhaustive-deps
   const duasEmpresas = partes.length > 1
-  const pagamentoFecha = partes.every((p) => falta(p.total, valoresPagamento(pagamentosPor[p.empresa_id] || pagamentoInicial(), p.total)) === 0)
+  // sinal da encomenda: abate a primeira parte, depois a segunda; o resto é cobrado normalmente
+  const sinal = sinalPorParte(partes.map((p) => p.total), encomenda?.sinal_valor || 0)
+  const aCobrar = partes.map((p, i) => arred(p.total - sinal.usado[i]))
+  const pagamentoFecha = partes.every((p, i) => aCobrar[i] === 0 || falta(aCobrar[i], valoresPagamento(pagamentosPor[p.empresa_id] || pagamentoInicial(), aCobrar[i])) === 0)
 
   // quanto já está no carrinho de cada peça (o kit usa as peças que o formam)
   function cabe(linha, qtd) {
@@ -256,15 +277,19 @@ export default function NovaVenda() {
     const { data, error } = await supabase.rpc('concluir_venda', {
       p: {
         cliente_id: clienteDaVenda?.id || null,
+        encomenda_id: encomenda?.id || null,
         canal,
         aprovacao,
-        partes: partes.map((p) => ({
+        partes: partes.map((p, i) => ({
           empresa_id: p.empresa_id,
           desconto: p.desconto,
           itens: p.itens.map(({ variacao_id, quantidade }) => ({ variacao_id, quantidade })),
-          pagamentos: valoresPagamento(pagamentosPor[p.empresa_id] || pagamentoInicial(), p.total)
-            .filter((x) => x.valor > 0)
-            .map(({ forma, valor, parcelas }) => ({ forma, valor, parcelas: forma === 'cartao_credito' ? parcelas : 1 })),
+          pagamentos: [
+            ...(sinal.usado[i] > 0 ? [{ forma: 'sinal', valor: sinal.usado[i], parcelas: 1 }] : []),
+            ...valoresPagamento(pagamentosPor[p.empresa_id] || pagamentoInicial(), aCobrar[i])
+              .filter((x) => x.valor > 0)
+              .map(({ forma, valor, parcelas }) => ({ forma, valor, parcelas: forma === 'cartao_credito' ? parcelas : 1 })),
+          ],
         })),
       },
     })
@@ -272,7 +297,7 @@ export default function NovaVenda() {
     if (error) {
       if (error.code === 'P0002') setAprovacao(null)
       await recarregar() // o estoque pode ter mudado
-      return setErro(traduzirErro(error))
+      return setErro(encomenda && /estoque/i.test(error.message) ? `${traduzirErro(error)} Dê entrada da peça no Estoque antes de entregar a encomenda.` : traduzirErro(error))
     }
     setResultado({
       vendas: data.map((v) => ({ ...v, desconto: partes.find((p) => p.empresa_id === v.empresa_id)?.desconto || 0 })),
@@ -281,7 +306,9 @@ export default function NovaVenda() {
       segundos: Math.max(1, Math.round((Date.now() - estado.inicio) / 1000)),
     })
     setEstado((e) => ({ ...e, etapa: 'concluida' }))
+    if (encomenda) setParams({}, { replace: true })
     recarregar()
+    clientesCtx.recarregar() // resumo da cliente e encomenda entregue
   }
 
   function novaVenda() {
@@ -336,7 +363,7 @@ export default function NovaVenda() {
           {cliente ? (
             <div className="seletor-escolhido">
               <div><strong>{cliente.nome}</strong><small>{cliente.whatsapp ? formatarWhatsApp(cliente.whatsapp) : 'sem WhatsApp'}</small></div>
-              <button className="botao-link" onClick={() => setCliente(null)}>Trocar</button>
+              {encomenda ? <small className="texto-suave">da encomenda</small> : <button className="botao-link" onClick={() => setCliente(null)}>Trocar</button>}
             </div>
           ) : cadastro ? (
             <div className="grade-campos">
@@ -393,19 +420,30 @@ export default function NovaVenda() {
         </section>
 
         {duasEmpresas && <Aviso tom="ambar">Esta venda tem peças dos dois CNPJs. Cobre cada parte na maquininha do seu CNPJ.</Aviso>}
-        {partes.map((p) => (
+        {encomenda?.sinal_valor > 0 && (
+          <Aviso tom={sinal.sobra > 0 ? 'ambar' : 'oliva'}>
+            A cliente já pagou {formatarMoeda(encomenda.sinal_valor)} de sinal ({FORMAS[encomenda.sinal_forma]}). Ele já está descontado abaixo.
+            {sinal.sobra > 0 && <> O sinal passou do valor da compra: <strong>devolva {formatarMoeda(sinal.sobra)}</strong> à cliente.</>}
+          </Aviso>
+        )}
+        {partes.map((p, i) => (aCobrar[i] === 0 ? (
+          <section key={p.empresa_id} className="cartao secao">
+            <header className="bloco-topo"><h2>{duasEmpresas ? empresas[p.empresa_id]?.apelido : 'Forma de pagamento'}</h2><strong>{formatarMoeda(p.total)}</strong></header>
+            <p className="texto-suave pequeno">Pago com o sinal da encomenda: nada a cobrar{duasEmpresas ? ' nesta parte' : ''}.</p>
+          </section>
+        ) : (
           <BlocoPagamento
             key={p.empresa_id}
             titulo={duasEmpresas ? `${empresas[p.empresa_id]?.apelido} · maquininha da ${empresas[p.empresa_id]?.dona}` : 'Forma de pagamento'}
             subtitulo={duasEmpresas
               ? `${p.itens.map((i) => linhaPorId.get(i.variacao_id)?.produto.nome).join(', ')}${empresas[p.empresa_id]?.tipo === 'me' ? ' · sai com nota' : ' · sem nota (MEI)'}`
               : `${empresas[p.empresa_id]?.apelido} · maquininha da ${empresas[p.empresa_id]?.dona}`}
-            total={p.total}
+            total={aCobrar[i]}
             pagamentos={pagamentosPor[p.empresa_id] || pagamentoInicial()}
             setPagamentos={(lista) => setPagamentosPor((atual) => ({ ...atual, [p.empresa_id]: lista }))}
             taxas={podeVerCustos ? taxas[p.empresa_id] : null}
           />
-        ))}
+        )))}
 
         {erro && <Aviso tom="vinho">{erro}</Aviso>}
 
@@ -425,8 +463,14 @@ export default function NovaVenda() {
   // ---------------- Itens ----------------
   return (
     <div className="pagina pagina-estreita com-rodape-fixo">
-      <header className="pagina-topo"><h1>Nova venda</h1></header>
-      {veioDeEncomenda && <Aviso tom="ambar">As encomendas ainda são de exemplo (até a etapa de Clientes). Para entregar, faça a venda normal pela busca.</Aviso>}
+      <header className="pagina-topo"><h1>{encomenda ? 'Entregar encomenda' : 'Nova venda'}</h1></header>
+      {encomenda && (
+        <Aviso tom="oliva">
+          Encomenda de <strong>{clientesCtx.clientePorId.get(encomenda.cliente_id)?.nome}</strong>. As peças do catálogo já estão na venda.
+          {encomenda.itens.some((i) => i.descricao) && ' Peças descritas à mão precisam ser cadastradas em Produtos e adicionadas pela busca.'}
+        </Aviso>
+      )}
+      {encomendaId && !encomenda && !clientesCtx.carregando && <Aviso tom="ambar">Esta encomenda não está mais em aberto (já foi entregue ou cancelada). Faça a venda normal pela busca.</Aviso>}
 
       <div className="busca-venda">
         <CampoBusca grande valor={busca} aoMudar={setBusca} aoEnter={() => busca.trim() && (resultados.length === 1 ? adicionar(resultados[0]) : lerCodigo(busca))} placeholder="Buscar produto, cor, tamanho ou código" autoFocus />
@@ -449,6 +493,7 @@ export default function NovaVenda() {
                   <small className={l.saldo <= 0 ? 'texto-alerta' : 'texto-suave'}>{l.saldo <= 0 ? 'sem estoque' : l.produto.tipo === 'kit' ? `dá para montar ${l.saldo}` : `${l.saldo} em estoque`}</small>
                 </span>
               </button>
+              {l.saldo <= 0 && l.produto.tipo !== 'kit' && <Link className="botao botao-secundario" to={`/encomendas?nova=${l.id}`}>Encomendar</Link>}
             </li>
           ))}
         </ul>

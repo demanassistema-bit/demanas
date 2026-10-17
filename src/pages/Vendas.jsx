@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
 import { supabase, traduzirErro } from '../lib/supabase'
 import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
 import { filtroInteiro, formatarWhatsApp, limparTexto, TAMANHO } from '../lib/limites'
 import { formatarDataHora, hojeISO, deISO, somarDias } from '../lib/datas'
-import { COMO_DEVOLVEU, FORMAS, valorDevolucao } from '../lib/vendas'
+import { COMO_DEVOLVEU, NOMES_FORMAS, valorDevolucao } from '../lib/vendas'
 import Modal, { BotaoPerigo } from '../components/Modal'
 import Icone from '../components/Icone'
 import { Aviso, Selo, Vazio } from '../components/ui'
@@ -90,7 +90,7 @@ export default function Vendas() {
                     <strong>nº {v.numero} · {formatarMoeda(v.total)}</strong>
                     <small>
                       {[formatarDataHora(v.criado_em), empresas[v.empresa_id]?.apelido, CANAIS[v.canal],
-                        [...new Set(v.venda_pagamentos.map((p) => FORMAS[p.forma]))].join(' + '), v.clientes?.nome, v.vendedora_nome].filter(Boolean).join(' · ')}
+                        [...new Set(v.venda_pagamentos.map((p) => NOMES_FORMAS[p.forma]))].join(' + '), v.clientes?.nome, v.vendedora_nome].filter(Boolean).join(' · ')}
                     </small>
                   </span>
                   <span className="selos">
@@ -144,7 +144,7 @@ function VendaAberta({ id, aoFechar, aoMudar }) {
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase.from('vendas')
-      .select('*, clientes(nome, whatsapp), venda_itens(*), venda_pagamentos(*), devolucoes(*, devolucao_itens(*))')
+      .select('*, clientes(nome, whatsapp, removida_em), venda_itens(*), venda_pagamentos(*), devolucoes(*, devolucao_itens(*))')
       .eq('id', id).maybeSingle()
     if (error) return setErro(traduzirErro(error))
     if (!data) return setErro('Venda não encontrada.')
@@ -181,7 +181,7 @@ function VendaAberta({ id, aoFechar, aoMudar }) {
     <Modal titulo={`Venda nº ${venda.numero}`} aoFechar={aoFechar}>
       <p className="texto-suave">
         {[formatarDataHora(venda.criado_em), empresas[venda.empresa_id]?.apelido, CANAIS[venda.canal], venda.vendedora_nome && `vendida por ${venda.vendedora_nome}`].filter(Boolean).join(' · ')}
-        {venda.clientes && <> · {venda.clientes.nome}{venda.clientes.whatsapp && ` (${formatarWhatsApp(venda.clientes.whatsapp)})`}</>}
+        {venda.clientes && <> · {venda.clientes.removida_em ? venda.clientes.nome : <Link to={`/clientes/${venda.cliente_id}`}>{venda.clientes.nome}</Link>}{venda.clientes.whatsapp && ` (${formatarWhatsApp(venda.clientes.whatsapp)})`}</>}
       </p>
       {venda.aprovada_com_codigo && <p className="texto-suave pequeno">Desconto aprovado com o código da proprietária.</p>}
 
@@ -207,7 +207,7 @@ function VendaAberta({ id, aoFechar, aoMudar }) {
         <div className="total"><dt>Total</dt><dd>{formatarMoeda(venda.total)}</dd></div>
         {venda.venda_pagamentos.map((p) => (
           <div key={p.id}>
-            <dt>{FORMAS[p.forma]}{p.parcelas > 1 ? ` em ${p.parcelas}x` : ''}{podeVerCustos && Number(p.taxa_percentual) > 0 && ` · taxa ${String(p.taxa_percentual).replace('.', ',')}%`}</dt>
+            <dt>{NOMES_FORMAS[p.forma]}{p.parcelas > 1 ? ` em ${p.parcelas}x` : ''}{podeVerCustos && Number(p.taxa_percentual) > 0 && ` · taxa ${String(p.taxa_percentual).replace('.', ',')}%`}</dt>
             <dd>{formatarMoeda(p.valor)}</dd>
           </div>
         ))}

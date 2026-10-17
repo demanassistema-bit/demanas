@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { DemoProvider } from './demo/DemoContext'
 import { CatalogoProvider } from './contexts/CatalogoContext'
+import { ClientesProvider } from './contexts/ClientesContext'
 import App from './App'
 import './styles.css'
 
@@ -26,9 +27,11 @@ if (!configurado) {
       <AuthProvider>
         <ThemeProvider>
           <CatalogoProvider>
-            <DemoProvider>
-              <App />
-            </DemoProvider>
+            <ClientesProvider>
+              <DemoProvider>
+                <App />
+              </DemoProvider>
+            </ClientesProvider>
           </CatalogoProvider>
         </ThemeProvider>
       </AuthProvider>

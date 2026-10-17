@@ -3,6 +3,7 @@
 import { arred, formatarMoeda } from './moeda.js'
 
 export const FORMAS = { pix: 'Pix', cartao_debito: 'Débito', cartao_credito: 'Crédito', dinheiro: 'Dinheiro' }
+export const NOMES_FORMAS = { ...FORMAS, sinal: 'Sinal da encomenda' }
 export const COMO_DEVOLVEU = { pix: 'Pix', dinheiro: 'Dinheiro', estorno_cartao: 'Estorno no cartão', credito_loja: 'Crédito na loja', troca: 'Troca por outra peça' }
 export const TIPOS_TAXA = { pix: 'Pix', debito: 'Débito', credito: 'Crédito à vista', credito_parcelado: 'Crédito parcelado' }
 export const MAX_PARCELAS = 12

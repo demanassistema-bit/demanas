@@ -3,13 +3,13 @@ import { supabase } from '../lib/supabase'
 import { Link } from 'react-router-dom'
 import { useDemo } from '../demo/DemoContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
+import { useClientes } from '../contexts/ClientesContext'
 import { textoLote } from '../lib/estoque'
 import { formatarMoeda, arred, CANAIS } from '../lib/moeda'
 import { deISO, diaDe, hojeISO, formatarHora, NOMES_MESES, diasAte } from '../lib/datas'
 import Icone from '../components/Icone'
 import { Metrica, Selo, seloValidade, Vazio } from '../components/ui'
-import { situacaoEncomenda } from '../demo/regras'
-import { textoItem } from './Encomendas'
+import { aniversarioNoMes, situacaoEncomenda, textoItem } from '../lib/clientes'
 
 function saudacao() {
   const h = new Date().getHours()
@@ -17,12 +17,12 @@ function saudacao() {
 }
 
 export default function Inicio() {
-  const { dados, linhas, clientePorId } = useDemo()
+  const { dados } = useDemo() // contas a pagar: ainda de exemplo até o Financeiro
+  const { ativas, encomendas, clientePorId } = useClientes()
   const catalogo = useCatalogo()
   const podeVerCustos = catalogo.podeVerCustos
   const linhaReal = useMemo(() => new Map(catalogo.linhas.map((l) => [l.id, l])), [catalogo.linhas])
   const hoje = hojeISO()
-  const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
   const mes = hoje.slice(0, 7)
   const mesAtual = new Date().getMonth()
 
@@ -64,13 +64,13 @@ export default function Inicio() {
   const vencendo = catalogo.lotesComSaldo
     .filter((l) => l.validade && diasAte(l.validade) <= 90 && linhaReal.has(l.variacao_id))
     .sort((a, b) => a.validade.localeCompare(b.validade))
-  const aniversariantes = dados.clientes
-    .filter((c) => c.nascimento && Number(c.nascimento.slice(5, 7)) === mesAtual + 1)
+  const aniversariantes = ativas
+    .filter((c) => aniversarioNoMes(c.nascimento, mesAtual + 1))
     .sort((a, b) => a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)))
   const ultimas = vendasMes.slice(0, 5)
   const contasProximas = (dados.contasPagar || []).filter((c) => !c.pagoEm && diasAte(c.vencimento) <= 7)
   // encomendas que pedem atenção: chegaram (avisar), atrasadas, chegando em até 7 dias
-  const encomendasAtencao = (dados.encomendas || [])
+  const encomendasAtencao = encomendas
     .filter((e) => e.status === 'chegou' || (e.status === 'aguardando' && e.previsao && diasAte(e.previsao) <= 7))
     .sort((a, b) => (b.status === 'chegou') - (a.status === 'chegou') || (a.previsao || '').localeCompare(b.previsao || ''))
 
@@ -165,7 +165,7 @@ export default function Inicio() {
                 return (
                   <li key={e.id}>
                     <Link to="/encomendas" className="linha-lista">
-                      <span><strong>{clientePorId.get(e.cliente_id)?.nome}</strong><small>{e.itens.map((i) => textoItem(i, linhaPorId)).join(', ')}</small></span>
+                      <span><strong>{clientePorId.get(e.cliente_id)?.nome}</strong><small>{e.itens.map((i) => textoItem(i, linhaReal)).join(', ')}</small></span>
                       <Selo tom={sit.tom}>{sit.texto}</Selo>
                     </Link>
                   </li>

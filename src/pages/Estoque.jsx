@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCatalogo } from '../contexts/CatalogoContext'
+import { useClientes } from '../contexts/ClientesContext'
 import { supabase, traduzirErro } from '../lib/supabase'
 import { formatarMoeda, paraCampoMoeda, arred } from '../lib/moeda'
 import { filtroDinheiro, filtroInteiro, LIMITE, lerInteiro, lerValor, limparTexto, TAMANHO } from '../lib/limites'
 import { diasAte, formatarDataHora } from '../lib/datas'
 import { erroValidade, ordenarPorValidade, textoLote, TIPOS_MOVIMENTO } from '../lib/estoque'
+import { encomendasDaVariacao } from '../lib/clientes'
 import { normalizar } from '../demo/regras'
 import Icone from '../components/Icone'
 import { Aviso, CampoBusca, Selo, SeletorVariacao, seloValidade, Vazio } from '../components/ui'
@@ -136,6 +138,7 @@ const itemVazio = { quantidade: '', custo: '', numero_lote: '', validade: '', co
 
 function Entrada() {
   const { fornecedores, podeVerCustos, registrarEntrada } = useCatalogo()
+  const { encomendas, clientePorId } = useClientes()
   const pecas = usePecasComEstoque()
   const [fornecedorId, setFornecedorId] = useState('')
   const [nota, setNota] = useState('')
@@ -146,6 +149,9 @@ function Entrada() {
   const [feito, setFeito] = useState('')
   const [salvando, setSalvando] = useState(false)
   const mostraLote = escolhida && (escolhida.produto.controla_validade || f.comLote)
+  // peça que tem dona: encomendas esperando por ela
+  const esperando = escolhida ? encomendasDaVariacao(encomendas, escolhida.id) : []
+  const [comDona, setComDona] = useState(0)
 
   function escolher(l) {
     setEscolhida(l)
@@ -191,6 +197,7 @@ function Entrada() {
     setSalvando(false)
     if (r.erro) return setErro(r.erro)
     const pecasTotal = itens.reduce((s, i) => s + i.quantidade, 0)
+    setComDona(encomendas.filter((e) => e.status === 'aguardando' && e.itens.some((i) => itens.some((x) => x.variacao_id === i.variacao_id))).length)
     setFeito(`Entrada registrada: ${pecasTotal} ${pecasTotal === 1 ? 'peça' : 'peças'}. O saldo e o custo médio já foram atualizados.`)
     setItens([]); setNota('')
   }
@@ -217,6 +224,11 @@ function Entrada() {
       <form className="cartao secao formulario" onSubmit={adicionar}>
         <h2>Peças que chegaram</h2>
         <SeletorVariacao escolhida={escolhida} aoEscolher={escolher} opcoes={pecas} />
+        {esperando.length > 0 && (
+          <Aviso tom="oliva">
+            <Icone nome="encomenda" tamanho={16} /> Esta peça tem dona: {esperando.map((e) => clientePorId.get(e.cliente_id)?.nome).filter(Boolean).join(', ')} {esperando.length === 1 ? 'está esperando' : 'estão esperando'}. Depois da entrada, marque "Chegou" em <Link to="/encomendas">Encomendas</Link> e avise.
+          </Aviso>
+        )}
         {escolhida && (
           <>
             <div className="grade-campos">
@@ -236,7 +248,7 @@ function Entrada() {
           </>
         )}
         {erro && <Aviso tom="vinho">{erro}</Aviso>}
-        {feito && <Aviso tom="oliva">{feito}</Aviso>}
+        {feito && <Aviso tom="oliva">{feito}{comDona > 0 && <> Chegaram peças de {comDona} {comDona === 1 ? 'encomenda' : 'encomendas'}: <Link to="/encomendas">marque "Chegou" e avise a cliente</Link>.</>}</Aviso>}
       </form>
 
       {itens.length > 0 && (
