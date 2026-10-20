@@ -4,7 +4,8 @@ import { buscarTudo, supabase, traduzirErro } from '../../lib/supabase'
 import { arred, formatarMoeda, lerMoeda } from '../../lib/moeda'
 import { diasAte, formatarData, hojeISO } from '../../lib/datas'
 import { erroData, filtroDinheiro, filtroInteiro, LIMITE, lerInteiro, lerValor, limparTexto, somarMeses, TAMANHO } from '../../lib/limites'
-import { CATEGORIAS_DESPESA, filtrarContas, FILTROS_CONTAS, situacaoConta, somar } from '../../lib/financeiro'
+import { filtrarContas, FILTROS_CONTAS, situacaoConta, somar } from '../../lib/financeiro'
+import { SeletorCategoria, useCategoriasDespesa } from './categorias'
 import Modal, { BotaoPerigo } from '../../components/Modal'
 import Icone from '../../components/Icone'
 import { Aviso, Metrica, Selo, Vazio } from '../../components/ui'
@@ -15,6 +16,7 @@ export default function APagar() {
   const [contas, setContas] = useState(null)
   const [erro, setErro] = useState('')
   const hoje = hojeISO()
+  const categorias = useCategoriasDespesa()
 
   const carregar = useCallback(async () => {
     const { data, error } = await buscarTudo(() => supabase.from('contas_pagar').select('*').order('vencimento').order('id'))
@@ -64,7 +66,7 @@ export default function APagar() {
               <li key={c.id} className="linha-lista conta">
                 <span>
                   <strong>{c.descricao}</strong>
-                  <small>{[c.fornecedor, CATEGORIAS_DESPESA[c.categoria], `vence ${formatarData(c.vencimento)}`, c.custo_fixo_id && 'custo fixo'].filter(Boolean).join(' · ')}</small>
+                  <small>{[c.fornecedor, categorias.nomes[c.categoria], `vence ${formatarData(c.vencimento)}`, c.custo_fixo_id && 'custo fixo'].filter(Boolean).join(' · ')}</small>
                 </span>
                 <span className="conta-direita">
                   <strong>{formatarMoeda(c.valor)}</strong>
@@ -81,12 +83,12 @@ export default function APagar() {
       )}
       <p className="texto-suave pequeno">Os custos fixos da Calculadora viram contas no dia 10 de cada mês. Conta paga não se apaga: desfaça o pagamento antes. Compras de mercadoria aparecem aqui, mas no resultado do mês entram pelo custo das peças vendidas.</p>
 
-      {nova && <NovaConta aoFechar={() => setNova(false)} aoSalvar={carregar} />}
+      {nova && <NovaConta categorias={categorias} aoFechar={() => setNova(false)} aoSalvar={carregar} />}
     </div>
   )
 }
 
-function NovaConta({ aoFechar, aoSalvar }) {
+function NovaConta({ categorias, aoFechar, aoSalvar }) {
   const { fornecedores } = useCatalogo()
   const [f, setF] = useState({ descricao: '', fornecedor: '', categoria: 'fornecedores', valor: '', vencimento: hojeISO(), vezes: '1' })
   const [erro, setErro] = useState('')
@@ -123,11 +125,9 @@ function NovaConta({ aoFechar, aoSalvar }) {
             <input list="fornecedores-conta" value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} maxLength={TAMANHO.fornecedor} />
             <datalist id="fornecedores-conta">{fornecedores.map((x) => <option key={x.id} value={x.nome} />)}</datalist>
           </label>
-          <label className="campo"><span>Categoria</span>
-            <select value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })}>
-              {Object.entries(CATEGORIAS_DESPESA).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
-            </select>
-          </label>
+          <div className="campo"><span>Categoria</span>
+            <SeletorCategoria valor={f.categoria} categorias={categorias} aoMudar={(categoria) => setF((atual) => ({ ...atual, categoria }))} />
+          </div>
           <label className="campo"><span>Valor total</span><input inputMode="decimal" value={f.valor} onChange={(e) => setF({ ...f, valor: filtroDinheiro(e.target.value) })} /></label>
           <label className="campo"><span>Primeiro vencimento</span><input type="date" min={somarMeses(hojeISO(), -12)} max={somarMeses(hojeISO(), 60)} value={f.vencimento} onChange={(e) => setF({ ...f, vencimento: e.target.value })} /></label>
           <label className="campo"><span>Dividir em quantas vezes</span><input inputMode="numeric" value={f.vezes} onChange={(e) => setF({ ...f, vezes: filtroInteiro(e.target.value, 2) })} /></label>

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { buscarTudo, supabase, traduzirErro } from '../../lib/supabase'
 import { formatarMoeda, formatarPercentual } from '../../lib/moeda'
 import { formatarData, hojeISO, NOMES_MESES, paraISO } from '../../lib/datas'
-import { CATEGORIAS_DESPESA, fluxoSemanas } from '../../lib/financeiro'
+import { fluxoSemanas } from '../../lib/financeiro'
+import { useCategoriasDespesa } from './categorias'
 import { percentual } from '../../lib/precos'
 import { Aviso } from '../../components/ui'
 
@@ -16,6 +17,7 @@ export default function Resultado() {
   const [r, setR] = useState(null)
   const [semanas, setSemanas] = useState(null)
   const [erro, setErro] = useState('')
+  const { nomes } = useCategoriasDespesa()
 
   useEffect(() => {
     setR(null)
@@ -66,7 +68,7 @@ export default function Resultado() {
               {linha('Custo das peças vendidas', Number(r.custo_pecas))}
               {linha('Lucro bruto', Number(r.lucro_bruto), { sinal: '=', forte: true })}
               {Object.entries(r.despesas).sort((a, b) => b[1] - a[1]).map(([cat, valor]) => (
-                <tr key={cat}><th scope="row">− {CATEGORIAS_DESPESA[cat] || cat}</th><td>{formatarMoeda(valor)}</td><td className="texto-suave">{formatarPercentual(percentual(Number(valor), Number(r.faturamento)))}</td></tr>
+                <tr key={cat}><th scope="row">− {nomes[cat] || cat}</th><td>{formatarMoeda(valor)}</td><td className="texto-suave">{formatarPercentual(percentual(Number(valor), Number(r.faturamento)))}</td></tr>
               ))}
               {linha('Resultado do mês', Number(r.resultado), { sinal: '=', forte: true, tom: Number(r.resultado) < 0 ? 'texto-negativo' : 'texto-positivo' })}
             </tbody>

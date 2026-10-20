@@ -8,6 +8,7 @@ import { paraISO, somarDias } from '../lib/datas'
 import { arredondarPara90, lucroDaVenda, percentual, percentualFixo, precoMinimo, precoPelaMargem } from '../lib/precos'
 import Icone from '../components/Icone'
 import { Aviso, SeletorVariacao } from '../components/ui'
+import { SeletorCategoria, useCategoriasDespesa } from './financeiro/categorias'
 
 const FORMAS = [
   { chave: 'pix', nome: 'Pix' },
@@ -71,6 +72,7 @@ function TelaCalculadora({ inicial }) {
   const taxas = catalogo.taxas[empresaCalc] || {}
   const imposto = Number(empresa?.imposto_percentual || 0)
   const linhas = useMemo(() => catalogo.linhas.filter((l) => l.ativo), [catalogo.linhas])
+  const categorias = useCategoriasDespesa()
 
   const avisar = ({ error }) => setErro(error ? traduzirErro(error) : '')
   const depois = useGuardarDepois((chave, valor) => {
@@ -134,9 +136,9 @@ function TelaCalculadora({ inicial }) {
   // ---------------- Custos fixos (no banco: viram contas a pagar no dia 10) ----------------
   function mudarFixo(id, campos) {
     setCustos((lista) => lista.map((c) => (c.id === id ? { ...c, ...campos } : c)))
-    // nome e valor guardam cada um no seu tempo (um não apaga o outro)
-    if (campos.nome !== undefined) depois(`${id}:nome`, id, { nome: campos.nome.trim() || 'Custo' })
-    else depois(`${id}:valor`, id, campos)
+    // cada campo (nome, valor, categoria) guarda no seu tempo: um não apaga o outro
+    const [campo] = Object.keys(campos)
+    depois(`${id}:${campo}`, id, campo === 'nome' ? { nome: campos.nome.trim() || 'Custo' } : campos)
   }
   async function adicionarFixo() {
     if (custos.length >= LIMITE.custosFixos) return
@@ -204,6 +206,7 @@ function TelaCalculadora({ inicial }) {
           {custos.map((c) => (
             <li key={c.id}>
               <input className="campo-solto" value={c.nome} maxLength={TAMANHO.custoFixo} placeholder="Nome do custo" onChange={(e) => mudarFixo(c.id, { nome: e.target.value })} aria-label="Nome do custo" />
+              <SeletorCategoria compacto valor={c.categoria} categorias={categorias} aoMudar={(categoria) => mudarFixo(c.id, { categoria })} />
               <input className="campo-solto valor" inputMode="decimal" value={textos[`fixo_${c.id}`] ?? ''} placeholder="0,00" onChange={(e) => mudarValor(`fixo_${c.id}`, e.target.value, (n) => mudarFixo(c.id, { valor: n }))} aria-label={`Valor de ${c.nome || 'custo'}`} />
               <button className="botao-icone" onClick={() => removerFixo(c.id)} aria-label={`Remover ${c.nome || 'custo'}`}><Icone nome="lixo" tamanho={18} /></button>
             </li>
@@ -212,7 +215,7 @@ function TelaCalculadora({ inicial }) {
         {custos.length < LIMITE.custosFixos
           ? <button className="botao-link" onClick={adicionarFixo}><Icone nome="somar" tamanho={16} /> Adicionar custo fixo</button>
           : <p className="texto-suave pequeno">Limite de {LIMITE.custosFixos} custos fixos. Junte os pequenos num só (ex.: "Outros").</p>}
-        <p className="texto-suave pequeno">Cada custo com valor vira uma conta em "A pagar" no dia 10 de cada mês.</p>
+        <p className="texto-suave pequeno">Cada custo com valor vira uma conta em "A pagar" no dia 10 de cada mês, na categoria escolhida. Para criar uma categoria, escolha "+ Nova categoria…".</p>
         <label className="campo campo-estreito">
           <span>Faturamento médio por mês</span>
           <input inputMode="decimal" value={textos.faturamento} onChange={(e) => mudarValor('faturamento', e.target.value, guardarCalc('faturamento'))} />

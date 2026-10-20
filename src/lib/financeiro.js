@@ -3,18 +3,6 @@
 import { arred } from './moeda.js'
 import { paraISO, somarDias } from './datas.js'
 
-export const CATEGORIAS_DESPESA = {
-  aluguel: 'Aluguel',
-  contas_loja: 'Contas da loja',
-  fornecedores: 'Fornecedores (mercadoria)',
-  contadora: 'Contadora',
-  marketing: 'Marketing',
-  taxas_tarifas: 'Taxas e tarifas',
-  impostos: 'Impostos (DAS)',
-  pro_labore: 'Pró-labore',
-  outros: 'Outros',
-}
-
 export const FILTROS_CONTAS = { abertas: 'Em aberto', vencidas: 'Vencidas', pagas: 'Pagas', todas: 'Todas' }
 
 export const somar = (lista, campo = 'valor') => arred(lista.reduce((s, x) => s + Number(x[campo] || 0), 0))
