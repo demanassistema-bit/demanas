@@ -576,3 +576,5 @@ a.linha-lista:hover, button.linha-lista:hover { background: var(--cartao-2); }
 .video-leitor { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; background: #000; }
 .devolucao-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--borda); }
 .devolucao-item input[inputmode] { width: 80px; }
+.lista-categorias .linha-categoria { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lista-categorias .linha-categoria .campo-solto { flex: 1; min-width: 140px; }
