@@ -32,8 +32,8 @@ export default function App() {
       <div className="tela-acesso">
         <div className="cartao cartao-acesso">
           <Logo altura={56} className="logo-login" />
-          <h1>Sem conexão</h1>
-          <p className="texto-suave">Não deu para falar com o sistema. Confira o Wi-Fi ou os dados do celular.</p>
+          <h1>Sistema fora do ar</h1>
+          <p className="texto-suave">Não consegui falar com o sistema agora. Se a sua internet está funcionando, avise a Bruna.</p>
           <button className="botao botao-principal" onClick={() => window.location.reload()}>Tentar de novo</button>
         </div>
       </div>

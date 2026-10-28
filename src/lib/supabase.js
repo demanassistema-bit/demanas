@@ -28,7 +28,7 @@ const traducoes = {
   'For security purposes, you can only request this after': 'Por segurança, espere alguns segundos antes de pedir de novo.',
   'Email link is invalid or has expired': 'Este link expirou ou já foi usado. Peça um novo.',
   'Email rate limit exceeded': 'Muitos e-mails enviados em pouco tempo. Espere uma hora e tente de novo.',
-  'Failed to fetch': 'Sem conexão com a internet. Confira o Wi-Fi ou os dados do celular.',
+  'Failed to fetch': 'Não consegui falar com o sistema agora. Se a sua internet está funcionando, avise a Bruna.',
   'Somente': null, // mensagens do nosso banco já vêm em português
   'new row for relation': 'Algum valor está fora do limite permitido. Confira os números e o tamanho dos textos.',
   'duplicate key value': 'Isso já está cadastrado (nome ou código repetido).',

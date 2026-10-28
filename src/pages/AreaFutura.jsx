@@ -82,7 +82,7 @@ export default function AreaFutura({ area }) {
     const { data, error } = await supabase.rpc('desbloquear_area', { p_area: area, p_codigo: codigo })
     setEnviando(false)
     setCodigo('')
-    if (error || !data?.ok) return setErro(data?.erro || 'Não foi possível conferir o código. Confira a internet.')
+    if (error || !data?.ok) return setErro(data?.erro || 'Não foi possível conferir o código agora. Tente de novo; se continuar, avise a Bruna.')
     await atualizarPermissoes()
   }
 
